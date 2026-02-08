@@ -11,28 +11,53 @@
     // HLS.js Configuration for transcoding
     // =========================================================================
 
+    var hlsConfigured = false;
+
     function configureHlsTimeouts() {
-        // Set higher timeouts for HLS.js when transcoding
-        // This is needed because segments may take time to generate
-        if (typeof Hls !== 'undefined' && Hls.DefaultConfig) {
-            Hls.DefaultConfig.fragLoadingTimeOut = 60000;     // 60 sec for fragment loading
-            Hls.DefaultConfig.manifestLoadingTimeOut = 30000;  // 30 sec for manifest
-            Hls.DefaultConfig.levelLoadingTimeOut = 30000;     // 30 sec for level
-            Hls.DefaultConfig.fragLoadingMaxRetry = 6;         // More retries
-            Hls.DefaultConfig.manifestLoadingMaxRetry = 4;
-            log('HLS.js timeouts configured for transcoding');
+        if (hlsConfigured) return;
+        
+        // HLS.js instance is created each time player starts
+        // We need to patch the Hls constructor to inject our config
+        if (typeof Hls !== 'undefined') {
+            // Store original Hls
+            var OriginalHls = Hls;
+            
+            // Create wrapper that injects our config
+            window.Hls = function(config) {
+                var transcodingConfig = {
+                    fragLoadingTimeOut: 120000,      // 120 sec for fragment loading
+                    manifestLoadingTimeOut: 60000,   // 60 sec for manifest
+                    levelLoadingTimeOut: 60000,      // 60 sec for level
+                    fragLoadingMaxRetry: 10,         // More retries
+                    manifestLoadingMaxRetry: 6,
+                    fragLoadingRetryDelay: 2000,     // 2 sec between retries
+                    fragLoadingMaxRetryTimeout: 120000
+                };
+                
+                // Merge with provided config
+                var mergedConfig = Object.assign({}, transcodingConfig, config || {});
+                log('HLS.js created with extended timeouts:', mergedConfig.fragLoadingTimeOut);
+                
+                return new OriginalHls(mergedConfig);
+            };
+            
+            // Copy static properties
+            window.Hls.isSupported = OriginalHls.isSupported;
+            window.Hls.Events = OriginalHls.Events;
+            window.Hls.ErrorTypes = OriginalHls.ErrorTypes;
+            window.Hls.ErrorDetails = OriginalHls.ErrorDetails;
+            window.Hls.DefaultConfig = OriginalHls.DefaultConfig;
+            
+            hlsConfigured = true;
+            log('HLS.js constructor patched for transcoding');
+        } else {
+            log('HLS.js not available yet');
         }
     }
 
     function resetHlsTimeouts() {
-        // Reset to default values after stopping transcoding
-        if (typeof Hls !== 'undefined' && Hls.DefaultConfig) {
-            Hls.DefaultConfig.fragLoadingTimeOut = 20000;
-            Hls.DefaultConfig.manifestLoadingTimeOut = 10000;
-            Hls.DefaultConfig.levelLoadingTimeOut = 10000;
-            Hls.DefaultConfig.fragLoadingMaxRetry = 3;
-            Hls.DefaultConfig.manifestLoadingMaxRetry = 2;
-        }
+        // No need to reset - each new HLS instance will use normal config
+        // after transcoding job is stopped
     }
 
     // =========================================================================
@@ -467,9 +492,6 @@
         stopHeartbeat();
         ensureJobStopped(true);
 
-        // Configure HLS.js for longer timeouts during transcoding
-        configureHlsTimeouts();
-
         showWait('Запуск транскодирования...');
 
         var payload = {
@@ -837,6 +859,9 @@
         window.lampa_transcoding_initialized = true;
 
         log('Initializing...');
+
+        // Patch HLS.js constructor for extended timeouts
+        configureHlsTimeouts();
 
         // Subscribe to player events
         Lampa.Player.listener.follow('create', handlePlayerCreate);
