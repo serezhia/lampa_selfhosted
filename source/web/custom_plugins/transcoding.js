@@ -556,7 +556,8 @@
     // =========================================================================
 
     var seekPending = false;
-    var lastSeekTime = 0;
+    var lastQueuedSeekTime = 0;  // For debouncing in requestSeek
+    var lastSeekEventTime = 0;   // For throttling seeking events
     var SEGMENT_DURATION = 4; // seconds per segment
 
     /**
@@ -579,7 +580,7 @@
         // Debounce: don't spam seek requests
         if (seekPending) {
             log('[SEEK] Request pending, queueing time:', time.toFixed(2));
-            lastSeekTime = time;
+            lastQueuedSeekTime = time;
             return;
         }
 
@@ -592,9 +593,9 @@
                 log('[SEEK] Response:', response, '| requested segment:', segment);
 
                 // If there was another seek during this request, do it now
-                if (lastSeekTime !== time && lastSeekTime > 0) {
-                    var pendingTime = lastSeekTime;
-                    lastSeekTime = 0;
+                if (lastQueuedSeekTime !== time && lastQueuedSeekTime > 0) {
+                    var pendingTime = lastQueuedSeekTime;
+                    lastQueuedSeekTime = 0;
                     requestSeek(pendingTime);
                 }
             },
@@ -609,31 +610,41 @@
     /**
      * Handle video 'seeking' event from the player
      */
-    var lastSeekTime = 0;
     var seekThrottleMs = 1000; // Throttle seek requests to 1 per second
 
     function handleVideoSeeking(e) {
         if (!activeJob) return;
 
         try {
-            var video = e && e.target ? e.target : Lampa.PlayerVideo.video();
-            if (video && video.currentTime !== undefined) {
-                var time = video.currentTime;
-                var now = Date.now();
-                
-                // Throttle requests
-                if (now - lastSeekTime < seekThrottleMs) {
-                    log('[SEEK] Throttled seek to', time.toFixed(2), 'sec');
-                    return;
-                }
-                lastSeekTime = now;
-
-                var segment = timeToSegment(time);
-                log('[SEEK] Video seeking to time:', time.toFixed(2), 'sec -> segment:', segment);
-                requestSeek(time);
+            // Always use Lampa.PlayerVideo.video() - e.target may not be video element
+            var video = Lampa.PlayerVideo.video();
+            if (!video || video.currentTime === undefined) {
+                log('[SEEK] No video element available');
+                return;
             }
-        } catch (e) {
-            log('[SEEK] Error in handler:', e);
+            
+            var time = video.currentTime;
+            
+            // Sanity check - reject invalid times
+            if (time < 0 || (mediaDuration && time > mediaDuration + 10)) {
+                log('[SEEK] Invalid time ignored:', time);
+                return;
+            }
+            
+            var now = Date.now();
+            
+            // Throttle requests
+            if (now - lastSeekEventTime < seekThrottleMs) {
+                log('[SEEK] Throttled seek to', time.toFixed(2), 'sec');
+                return;
+            }
+            lastSeekEventTime = now;
+
+            var segment = timeToSegment(time);
+            log('[SEEK] Video seeking to time:', time.toFixed(2), 'sec -> segment:', segment);
+            requestSeek(time);
+        } catch (err) {
+            log('[SEEK] Error in handler:', err);
         }
     }
 

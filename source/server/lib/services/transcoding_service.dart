@@ -252,12 +252,11 @@ class TranscodingService {
     _sessions[streamId] = session;
 
     // Calculate start segment from startTime (continue watching)
-    // Start 30 segments earlier (2 min) to account for keyframe alignment
-    // and TorrServer streaming quirks
+    // Start 10 segments earlier (40 sec) for keyframe alignment buffer
     final requestedSegment = startTime > 0
         ? (startTime / session.segmentDuration).floor()
         : 0;
-    final startSegment = (requestedSegment - 30).clamp(0, requestedSegment);
+    final startSegment = (requestedSegment - 10).clamp(0, requestedSegment);
 
     print('[Transcoding] Starting session $streamId');
     print('[Transcoding] Source: $sourceUrl');
@@ -338,15 +337,22 @@ class TranscodingService {
 
     final args = <String>['-y'];
 
-    // Input seeking - fast seek to approximate position
-    // We already offset startSegment by 30 segments in callers,
-    // so this should land before the desired position
+    // Build source URL - add start parameter for TorrServer seeking
+    var sourceUrl = session.sourceUrl;
+    if (seekTime > 0 && sourceUrl.contains('/torrserver/')) {
+      // TorrServer supports ?start=SECONDS for seeking
+      final separator = sourceUrl.contains('?') ? '&' : '?';
+      sourceUrl = '$sourceUrl${separator}start=${seekTime.toInt()}';
+      print('[Transcoding] TorrServer seek URL: $sourceUrl');
+    }
+
+    // Input seeking - still use -ss for precision after TorrServer seeks
     if (seekTime > 0) {
       args.addAll(['-ss', seekTime.toStringAsFixed(3)]);
     }
 
     args
-      ..addAll(['-i', session.sourceUrl])
+      ..addAll(['-i', sourceUrl])
       // Map video stream (copy, no re-encoding)
       ..addAll(['-map', '0:v:0'])
       // Map selected audio stream using absolute stream index
@@ -492,14 +498,14 @@ class TranscodingService {
     }
 
     // Need to restart FFmpeg from new position
-    // Start 30 segments earlier (2 min) for TorrServer compatibility
-    final safeStartSegment = (segmentNumber - 30).clamp(0, segmentNumber);
+    // Start 10 segments earlier (40 sec) for keyframe alignment buffer
+    final safeStartSegment = (segmentNumber - 10).clamp(0, segmentNumber);
     final seekTime = safeStartSegment * session.segmentDuration;
     print(
       '[Transcoding] RESTART: '
       'requested=$segmentNumber (${requestedTime.toStringAsFixed(1)}s), '
       'starting from segment=$safeStartSegment (${seekTime.toStringAsFixed(1)}s), '
-      'offset=${segmentNumber - safeStartSegment} segments',
+      'offset=${segmentNumber - safeStartSegment}',
     );
 
     // Kill current FFmpeg
