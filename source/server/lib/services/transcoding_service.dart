@@ -25,6 +25,7 @@ class TranscodingSession {
   final DateTime startedAt;
   DateTime lastHeartbeat;
   Process? ffmpegProcess;
+  Process? subtitleProcess; // Separate process for subtitle extraction
   bool isReady = false;
   String? error;
 
@@ -234,13 +235,23 @@ class TranscodingService {
         print('[FFmpeg] $line');
       });
 
+      // Start separate subtitle extraction process if requested
+      if (session.subtitleIndex != null) {
+        final subArgs = _buildSubtitleArgs(session);
+        print('[Transcoding] Subtitle FFmpeg args: ${subArgs.join(' ')}');
+
+        session.subtitleProcess = await Process.start('ffmpeg', subArgs);
+
+        // Log subtitle process stderr
+        session.subtitleProcess!.stderr.transform(utf8.decoder).listen((line) {
+          print('[FFmpeg-Subs] $line');
+        });
+
+        print('[Transcoding] Subtitle extraction started (runs in background)');
+      }
+
       // Wait for first segment to be ready
       await _waitForPlaylist(session);
-
-      // Wait for subtitles file if subtitles were requested
-      if (session.subtitleIndex != null) {
-        await _waitForSubtitles(session);
-      }
 
       session.isReady = true;
 
@@ -272,7 +283,7 @@ class TranscodingService {
       // Audio: transcode to AAC for browser compatibility
       ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
 
-    // HLS output settings (first output)
+    // HLS output settings
     args
       ..addAll(['-f', 'hls'])
       ..addAll(['-hls_time', '4'])
@@ -284,18 +295,26 @@ class TranscodingService {
       ..addAll(['-start_number', '0'])
       ..add(session.playlistPath);
 
-    // Extract subtitles as a separate output (must come AFTER HLS output)
-    if (session.subtitleIndex != null) {
-      args.addAll([
-        '-map',
-        '0:${session.subtitleIndex}',
-        '-c:s',
-        'webvtt',
-        session.subtitlesPath,
-      ]);
-    }
+    // Note: Subtitles are extracted in a separate process
+    // to avoid buffering issues with streaming sources
 
     return args;
+  }
+
+  /// Build FFmpeg arguments for extracting subtitles
+  List<String> _buildSubtitleArgs(TranscodingSession session) {
+    return [
+      '-y',
+      '-i',
+      session.sourceUrl,
+      '-map',
+      '0:${session.subtitleIndex}',
+      '-c:s',
+      'webvtt',
+      '-flush_packets',
+      '1',
+      session.subtitlesPath,
+    ];
   }
 
   /// Wait for the playlist file to be created
@@ -317,31 +336,6 @@ class TranscodingService {
     }
 
     throw Exception('Timeout waiting for HLS playlist');
-  }
-
-  /// Wait for subtitles file to be created and have content
-  Future<void> _waitForSubtitles(TranscodingSession session) async {
-    final subtitlesFile = File(session.subtitlesPath);
-    var attempts = 0;
-    const maxAttempts = 20; // 10 seconds
-
-    print('[Transcoding] Waiting for subtitles: ${session.subtitlesPath}');
-
-    while (attempts < maxAttempts) {
-      if (subtitlesFile.existsSync()) {
-        final content = subtitlesFile.readAsStringSync();
-        // VTT must have WEBVTT header and at least one cue
-        if (content.contains('WEBVTT') && content.contains('-->')) {
-          print('[Transcoding] Subtitles ready, ${content.length} bytes');
-          return;
-        }
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      attempts++;
-    }
-
-    // Don't throw - subtitles are optional, just log warning
-    print('[Transcoding] Warning: Subtitles not ready after 10s');
   }
 
   /// Get session by ID
@@ -372,6 +366,18 @@ class TranscodingService {
         const Duration(seconds: 5),
         onTimeout: () {
           session.ffmpegProcess!.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+    }
+
+    // Kill subtitle extraction process
+    if (session.subtitleProcess != null) {
+      session.subtitleProcess!.kill();
+      await session.subtitleProcess!.exitCode.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          session.subtitleProcess!.kill(ProcessSignal.sigkill);
           return -1;
         },
       );
