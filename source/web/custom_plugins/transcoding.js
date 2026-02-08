@@ -282,13 +282,13 @@
 
     function showSubtitleSelector(data, audioTrack, subtitleTracks, duration) {
         // Filter to only show text-based subtitles
-        var textSubs = subtitleTracks.filter(function(track) {
+        var textSubs = subtitleTracks.filter(function (track) {
             return isTextSubtitle(track);
         });
 
         // If no text subtitles available
         if (textSubs.length === 0) {
-            var hasGraphical = subtitleTracks.some(function(track) {
+            var hasGraphical = subtitleTracks.some(function (track) {
                 return !isTextSubtitle(track);
             });
             if (hasGraphical) {
