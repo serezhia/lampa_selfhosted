@@ -42,6 +42,7 @@ class TranscodingSession {
   final Set<int> _generatedSegments;
 
   String get playlistPath => '$outputDir/playlist.m3u8';
+  String get vodPlaylistPath => '$outputDir/vod_playlist.m3u8';
   String get subtitlesPath => '$outputDir/subtitles.vtt';
 
   /// Total number of segments based on duration
@@ -267,9 +268,10 @@ class TranscodingService {
     }
 
     // Generate VOD playlist upfront if duration is known
+    // Store it separately so FFmpeg doesn't try to append to it
     if (duration != null && duration > 0) {
       final vodPlaylist = _generateVodPlaylist(session);
-      await File(session.playlistPath).writeAsString(vodPlaylist);
+      await File(session.vodPlaylistPath).writeAsString(vodPlaylist);
       print(
         '[Transcoding] VOD playlist written with ${session.totalSegments} segments',
       );

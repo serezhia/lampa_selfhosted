@@ -31,7 +31,13 @@ Future<Response> onRequest(
   String contentType;
 
   if (filename == 'playlist.m3u8' || filename.endsWith('.m3u8')) {
-    filePath = session.playlistPath;
+    // Prefer VOD playlist (pre-generated with all segments) over FFmpeg's
+    final vodFile = File(session.vodPlaylistPath);
+    if (vodFile.existsSync()) {
+      filePath = session.vodPlaylistPath;
+    } else {
+      filePath = session.playlistPath;
+    }
     contentType = 'application/vnd.apple.mpegurl';
   } else if (filename.endsWith('.ts')) {
     // Extract segment number from filename (segment_XXX.ts)
