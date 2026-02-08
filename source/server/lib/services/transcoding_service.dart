@@ -252,9 +252,11 @@ class TranscodingService {
     _sessions[streamId] = session;
 
     // Calculate start segment from startTime (continue watching)
-    final startSegment = startTime > 0
+    // Start a few segments earlier to account for keyframe alignment
+    final requestedSegment = startTime > 0
         ? (startTime / session.segmentDuration).floor()
         : 0;
+    final startSegment = (requestedSegment - 5).clamp(0, requestedSegment);
 
     print('[Transcoding] Starting session $streamId');
     print('[Transcoding] Source: $sourceUrl');
@@ -264,7 +266,10 @@ class TranscodingService {
       print('[Transcoding] Subtitle index: $subtitleIndex');
     }
     if (startTime > 0) {
-      print('[Transcoding] Start time: $startTime seconds (segment $startSegment)');
+      print(
+        '[Transcoding] Start time: $startTime seconds '
+        '(segment $startSegment, requested $requestedSegment)',
+      );
     }
 
     // Generate VOD playlist upfront if duration is known
@@ -471,7 +476,12 @@ class TranscodingService {
     }
 
     // Need to restart FFmpeg from new position
-    print('[Transcoding] Restarting FFmpeg from segment $segmentNumber');
+    // Start a few segments earlier to account for keyframe alignment
+    final safeStartSegment = (segmentNumber - 5).clamp(0, segmentNumber);
+    print(
+      '[Transcoding] Restarting FFmpeg from segment $safeStartSegment '
+      '(requested: $segmentNumber)',
+    );
 
     // Kill current FFmpeg
     if (session.ffmpegProcess != null) {
@@ -485,11 +495,11 @@ class TranscodingService {
       );
     }
 
-    // Start new FFmpeg from segment position
-    session.currentStartSegment = segmentNumber;
+    // Start new FFmpeg from safe segment position
+    session.currentStartSegment = safeStartSegment;
     session.ffmpegStartedAt = DateTime.now();
 
-    final args = _buildFfmpegArgs(session, startSegment: segmentNumber);
+    final args = _buildFfmpegArgs(session, startSegment: safeStartSegment);
     print('[Transcoding] New FFmpeg args: ${args.join(' ')}');
 
     try {
