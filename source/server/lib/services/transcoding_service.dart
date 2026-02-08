@@ -252,11 +252,12 @@ class TranscodingService {
     _sessions[streamId] = session;
 
     // Calculate start segment from startTime (continue watching)
-    // Start a few segments earlier to account for keyframe alignment
+    // Start 30 segments earlier (2 min) to account for keyframe alignment
+    // and TorrServer streaming quirks
     final requestedSegment = startTime > 0
         ? (startTime / session.segmentDuration).floor()
         : 0;
-    final startSegment = (requestedSegment - 5).clamp(0, requestedSegment);
+    final startSegment = (requestedSegment - 30).clamp(0, requestedSegment);
 
     print('[Transcoding] Starting session $streamId');
     print('[Transcoding] Source: $sourceUrl');
@@ -337,7 +338,9 @@ class TranscodingService {
 
     final args = <String>['-y'];
 
-    // Input seeking - MUST be before -i for fast seek to keyframe
+    // Input seeking - fast seek to approximate position
+    // We already offset startSegment by 30 segments in callers,
+    // so this should land before the desired position
     if (seekTime > 0) {
       args.addAll(['-ss', seekTime.toStringAsFixed(3)]);
     }
@@ -447,11 +450,15 @@ class TranscodingService {
     final session = _sessions[streamId];
     if (session == null) return false;
 
-    print('[Transcoding] Seek request to segment $segmentNumber');
+    final requestedTime = segmentNumber * session.segmentDuration;
+    print(
+      '[Transcoding] Seek request: segment $segmentNumber '
+      '(time ${requestedTime.toStringAsFixed(1)}s)',
+    );
 
     // Check if segment already exists
     if (session.isSegmentGenerated(segmentNumber)) {
-      print('[Transcoding] Segment $segmentNumber already exists');
+      print('[Transcoding] Segment $segmentNumber already exists on disk');
       return true;
     }
 
@@ -464,6 +471,11 @@ class TranscodingService {
       estimatedCurrent = currentlyGenerating +
           (elapsed.inMilliseconds / (session.segmentDuration * 1000)).floor();
     }
+
+    print(
+      '[Transcoding] FFmpeg status: started at segment $currentlyGenerating, '
+      'estimated current: $estimatedCurrent',
+    );
 
     // Only wait if segment is close to current position and ahead of it
     // If segment is behind estimatedCurrent, FFmpeg already passed it
@@ -480,11 +492,14 @@ class TranscodingService {
     }
 
     // Need to restart FFmpeg from new position
-    // Start a few segments earlier to account for keyframe alignment
-    final safeStartSegment = (segmentNumber - 5).clamp(0, segmentNumber);
+    // Start 30 segments earlier (2 min) for TorrServer compatibility
+    final safeStartSegment = (segmentNumber - 30).clamp(0, segmentNumber);
+    final seekTime = safeStartSegment * session.segmentDuration;
     print(
-      '[Transcoding] Restarting FFmpeg from segment $safeStartSegment '
-      '(requested: $segmentNumber)',
+      '[Transcoding] RESTART: '
+      'requested=$segmentNumber (${requestedTime.toStringAsFixed(1)}s), '
+      'starting from segment=$safeStartSegment (${seekTime.toStringAsFixed(1)}s), '
+      'offset=${segmentNumber - safeStartSegment} segments',
     );
 
     // Kill current FFmpeg
@@ -497,6 +512,7 @@ class TranscodingService {
           return -1;
         },
       );
+      print('[Transcoding] Previous FFmpeg process killed');
     }
 
     // Start new FFmpeg from safe segment position
@@ -504,7 +520,7 @@ class TranscodingService {
     session.ffmpegStartedAt = DateTime.now();
 
     final args = _buildFfmpegArgs(session, startSegment: safeStartSegment);
-    print('[Transcoding] New FFmpeg args: ${args.join(' ')}');
+    print('[Transcoding] FFmpeg seek args: -ss ${seekTime.toStringAsFixed(3)} -start_number $safeStartSegment');
 
     try {
       session.ffmpegProcess = await Process.start('ffmpeg', args);

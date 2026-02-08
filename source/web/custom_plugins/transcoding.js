@@ -554,6 +554,14 @@
 
     var seekPending = false;
     var lastSeekTime = 0;
+    var SEGMENT_DURATION = 4; // seconds per segment
+
+    /**
+     * Calculate segment number from time
+     */
+    function timeToSegment(time) {
+        return Math.floor(time / SEGMENT_DURATION);
+    }
 
     /**
      * Request the backend to prepare segments for a specific time position.
@@ -562,20 +570,23 @@
     function requestSeek(time) {
         if (!activeJob) return;
 
+        var segment = timeToSegment(time);
+        log('[SEEK] Requesting time:', time.toFixed(2), 'sec -> segment:', segment);
+
         // Debounce: don't spam seek requests
         if (seekPending) {
+            log('[SEEK] Request pending, queueing time:', time.toFixed(2));
             lastSeekTime = time;
             return;
         }
 
         seekPending = true;
-        log('Seeking to time:', time);
 
         apiRequest('POST', '/api/transcoding/' + activeJob.streamId + '/seek',
             { time: time },
             function (response) {
                 seekPending = false;
-                log('Seek response:', response);
+                log('[SEEK] Response:', response, '| requested segment:', segment);
 
                 // If there was another seek during this request, do it now
                 if (lastSeekTime !== time && lastSeekTime > 0) {
@@ -586,7 +597,7 @@
             },
             function (error) {
                 seekPending = false;
-                log('Seek error:', error);
+                log('[SEEK] Error:', error);
             },
             { timeout: 35000 }
         );
@@ -601,11 +612,13 @@
         try {
             var video = Lampa.PlayerVideo.video();
             if (video && video.currentTime !== undefined) {
-                log('Video seeking to:', video.currentTime);
-                requestSeek(video.currentTime);
+                var time = video.currentTime;
+                var segment = timeToSegment(time);
+                log('[SEEK] Video seeking to time:', time.toFixed(2), 'sec -> segment:', segment);
+                requestSeek(time);
             }
         } catch (e) {
-            log('Error in seeking handler:', e);
+            log('[SEEK] Error in handler:', e);
         }
     }
 
