@@ -34,8 +34,31 @@ Future<Response> onRequest(
     filePath = session.playlistPath;
     contentType = 'application/vnd.apple.mpegurl';
   } else if (filename.endsWith('.ts')) {
+    // Extract segment number from filename (segment_XXX.ts)
+    final match = RegExp(r'segment_(\d+)\.ts').firstMatch(filename);
+    if (match == null) {
+      return Response.json(
+        body: {'error': 'Invalid segment filename'},
+        statusCode: HttpStatus.badRequest,
+      );
+    }
+
+    final segmentNumber = int.parse(match.group(1)!);
     filePath = '${session.outputDir}/$filename';
     contentType = 'video/mp2t';
+
+    // Check if segment exists, if not - trigger seek on demand
+    final segmentFile = File(filePath);
+    if (!segmentFile.existsSync()) {
+      print('[API] Segment $segmentNumber not ready, triggering seek');
+      final ready = await transcoding.seekToSegment(streamId, segmentNumber);
+      if (!ready) {
+        return Response.json(
+          body: {'error': 'Segment not ready', 'segment': segmentNumber},
+          statusCode: HttpStatus.serviceUnavailable,
+        );
+      }
+    }
   } else if (filename == 'subtitles.vtt' || filename.endsWith('.vtt')) {
     filePath = session.subtitlesPath;
     contentType = 'text/vtt';

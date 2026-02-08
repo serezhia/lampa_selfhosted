@@ -540,6 +540,67 @@
         );
     }
 
+    // =========================================================================
+    // Seeking Support
+    // =========================================================================
+
+    var seekPending = false;
+    var lastSeekTime = 0;
+
+    /**
+     * Request the backend to prepare segments for a specific time position.
+     * This is called proactively when the user seeks to speed up segment availability.
+     */
+    function requestSeek(time) {
+        if (!activeJob) return;
+
+        // Debounce: don't spam seek requests
+        if (seekPending) {
+            lastSeekTime = time;
+            return;
+        }
+
+        seekPending = true;
+        log('Seeking to time:', time);
+
+        apiRequest('POST', '/api/transcoding/' + activeJob.streamId + '/seek',
+            { time: time },
+            function (response) {
+                seekPending = false;
+                log('Seek response:', response);
+
+                // If there was another seek during this request, do it now
+                if (lastSeekTime !== time && lastSeekTime > 0) {
+                    var pendingTime = lastSeekTime;
+                    lastSeekTime = 0;
+                    requestSeek(pendingTime);
+                }
+            },
+            function (error) {
+                seekPending = false;
+                log('Seek error:', error);
+            },
+            { timeout: 35000 }
+        );
+    }
+
+    /**
+     * Handle video 'seeking' event from the player
+     */
+    function handleVideoSeeking() {
+        if (!activeJob) return;
+
+        try {
+            var video = Lampa.PlayerVideo.video();
+            if (video && video.currentTime !== undefined) {
+                log('Video seeking to:', video.currentTime);
+                requestSeek(video.currentTime);
+            }
+        } catch (e) {
+            log('Error in seeking handler:', e);
+        }
+    }
+
     function ensureJobStopped(sendRemote) {
         if (!activeJob) return;
 
@@ -690,6 +751,7 @@
             Lampa.PlayerVideo.listener.follow('canplay', handleVideoLoadedData);
             Lampa.PlayerVideo.listener.follow('pause', handleVideoPause);
             Lampa.PlayerVideo.listener.follow('play', handleVideoPlay);
+            Lampa.PlayerVideo.listener.follow('seeking', handleVideoSeeking);
         }
 
         // Also handle page navigation to stop transcoding

@@ -13,14 +13,17 @@ class TranscodingSession {
     required this.outputDir,
     this.subtitleIndex,
     this.duration,
+    this.segmentDuration = 4.0,
   })  : startedAt = DateTime.now(),
-        lastHeartbeat = DateTime.now();
+        lastHeartbeat = DateTime.now(),
+        _generatedSegments = <int>{};
 
   final String streamId;
   final String sourceUrl;
   final int audioIndex;
   final int? subtitleIndex;
   final double? duration;
+  final double segmentDuration;
   final String outputDir;
   final DateTime startedAt;
   DateTime lastHeartbeat;
@@ -29,8 +32,21 @@ class TranscodingSession {
   bool isReady = false;
   String? error;
 
+  /// Current segment FFmpeg started transcoding from
+  int currentStartSegment = 0;
+
+  /// Timestamp when current FFmpeg process started
+  DateTime? ffmpegStartedAt;
+
+  /// Set of segment numbers that have been generated
+  final Set<int> _generatedSegments;
+
   String get playlistPath => '$outputDir/playlist.m3u8';
   String get subtitlesPath => '$outputDir/subtitles.vtt';
+
+  /// Total number of segments based on duration
+  int get totalSegments =>
+      duration != null ? (duration! / segmentDuration).ceil() : 0;
 
   void updateHeartbeat() {
     lastHeartbeat = DateTime.now();
@@ -39,6 +55,25 @@ class TranscodingSession {
   bool get isExpired {
     // Session expires after 60 seconds without heartbeat
     return DateTime.now().difference(lastHeartbeat).inSeconds > 60;
+  }
+
+  /// Check if a segment file exists
+  bool isSegmentGenerated(int segmentNumber) {
+    if (_generatedSegments.contains(segmentNumber)) return true;
+
+    final segmentFile = File(
+      '$outputDir/segment_${segmentNumber.toString().padLeft(3, '0')}.ts',
+    );
+    if (segmentFile.existsSync()) {
+      _generatedSegments.add(segmentNumber);
+      return true;
+    }
+    return false;
+  }
+
+  /// Get segment number for a given time position
+  int getSegmentForTime(double time) {
+    return (time / segmentDuration).floor();
   }
 }
 
@@ -216,13 +251,25 @@ class TranscodingService {
 
     print('[Transcoding] Starting session $streamId');
     print('[Transcoding] Source: $sourceUrl');
+    print('[Transcoding] Duration: $duration seconds');
     print('[Transcoding] Audio index: $audioIndex');
     if (subtitleIndex != null) {
       print('[Transcoding] Subtitle index: $subtitleIndex');
     }
 
-    // Build FFmpeg command
-    final args = _buildFfmpegArgs(session);
+    // Generate VOD playlist upfront if duration is known
+    if (duration != null && duration > 0) {
+      final vodPlaylist = _generateVodPlaylist(session);
+      await File(session.playlistPath).writeAsString(vodPlaylist);
+      print(
+        '[Transcoding] VOD playlist written with ${session.totalSegments} segments',
+      );
+    }
+
+    // Build FFmpeg command starting from segment 0
+    final args = _buildFfmpegArgs(session, startSegment: 0);
+    session.currentStartSegment = 0;
+    session.ffmpegStartedAt = DateTime.now();
 
     print('[Transcoding] FFmpeg args: ${args.join(' ')}');
 
@@ -251,7 +298,7 @@ class TranscodingService {
       }
 
       // Wait for first segment to be ready
-      await _waitForPlaylist(session);
+      await _waitForSegment(session, 0);
 
       session.isReady = true;
 
@@ -266,14 +313,22 @@ class TranscodingService {
     return session;
   }
 
-  /// Build FFmpeg arguments for HLS transcoding
-  List<String> _buildFfmpegArgs(TranscodingSession session) {
-    final args = <String>[
-      '-y',
-      '-i',
-      session.sourceUrl,
-    ]
+  /// Build FFmpeg arguments for HLS transcoding with optional seek
+  List<String> _buildFfmpegArgs(
+    TranscodingSession session, {
+    int startSegment = 0,
+  }) {
+    final seekTime = startSegment * session.segmentDuration;
 
+    final args = <String>['-y'];
+
+    // Input seeking - MUST be before -i for fast seek to keyframe
+    if (seekTime > 0) {
+      args.addAll(['-ss', seekTime.toStringAsFixed(3)]);
+    }
+
+    args
+      ..addAll(['-i', session.sourceUrl])
       // Map video stream (copy, no re-encoding)
       ..addAll(['-map', '0:v:0'])
       // Map selected audio stream using absolute stream index
@@ -286,19 +341,53 @@ class TranscodingService {
     // HLS output settings
     args
       ..addAll(['-f', 'hls'])
-      ..addAll(['-hls_time', '4'])
+      ..addAll(['-hls_time', session.segmentDuration.toStringAsFixed(0)])
       ..addAll(['-hls_list_size', '0'])
-      ..addAll(['-hls_flags', 'delete_segments+append_list'])
+      // Remove delete_segments - keep all segments for seeking back
+      ..addAll(['-hls_flags', 'append_list+independent_segments'])
       ..addAll(
         ['-hls_segment_filename', '${session.outputDir}/segment_%03d.ts'],
       )
-      ..addAll(['-start_number', '0'])
+      ..addAll(['-start_number', startSegment.toString()])
       ..add(session.playlistPath);
 
     // Note: Subtitles are extracted in a separate process
     // to avoid buffering issues with streaming sources
 
     return args;
+  }
+
+  /// Generate a complete VOD playlist with all segment references
+  String _generateVodPlaylist(TranscodingSession session) {
+    if (session.duration == null || session.duration! <= 0) {
+      throw Exception('Duration required for VOD playlist');
+    }
+
+    final duration = session.duration!;
+    final segmentDuration = session.segmentDuration;
+    final segmentCount = (duration / segmentDuration).ceil();
+
+    final buffer = StringBuffer()
+      ..writeln('#EXTM3U')
+      ..writeln('#EXT-X-VERSION:3')
+      ..writeln('#EXT-X-TARGETDURATION:${segmentDuration.ceil()}')
+      ..writeln('#EXT-X-MEDIA-SEQUENCE:0')
+      ..writeln('#EXT-X-PLAYLIST-TYPE:VOD');
+
+    for (var i = 0; i < segmentCount; i++) {
+      final isLast = i == segmentCount - 1;
+      final segDur =
+          isLast ? duration - (i * segmentDuration) : segmentDuration;
+
+      buffer
+        ..writeln('#EXTINF:${segDur.toStringAsFixed(3)},')
+        ..writeln('segment_${i.toString().padLeft(3, '0')}.ts');
+    }
+
+    buffer.writeln('#EXT-X-ENDLIST');
+
+    print('[Transcoding] Generated VOD playlist with $segmentCount segments');
+    return buffer.toString();
   }
 
   /// Build FFmpeg arguments for extracting subtitles
@@ -317,25 +406,96 @@ class TranscodingService {
     ];
   }
 
-  /// Wait for the playlist file to be created
-  Future<void> _waitForPlaylist(TranscodingSession session) async {
-    final playlistFile = File(session.playlistPath);
-    var attempts = 0;
-    const maxAttempts = 60; // 30 seconds
+  /// Wait for a specific segment to be generated
+  Future<bool> _waitForSegment(
+    TranscodingSession session,
+    int segmentNumber, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    const checkInterval = Duration(milliseconds: 300);
+    final deadline = DateTime.now().add(timeout);
 
-    while (attempts < maxAttempts) {
-      if (playlistFile.existsSync()) {
-        final content = playlistFile.readAsStringSync();
-        // Wait for at least one segment
-        if (content.contains('.ts')) {
-          return;
-        }
+    while (DateTime.now().isBefore(deadline)) {
+      if (session.isSegmentGenerated(segmentNumber)) {
+        print('[Transcoding] Segment $segmentNumber is ready');
+        return true;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      attempts++;
+      await Future<void>.delayed(checkInterval);
     }
 
-    throw Exception('Timeout waiting for HLS playlist');
+    print('[Transcoding] Timeout waiting for segment $segmentNumber');
+    return false;
+  }
+
+  /// Seek to a specific segment, restarting FFmpeg if needed
+  Future<bool> seekToSegment(String streamId, int segmentNumber) async {
+    final session = _sessions[streamId];
+    if (session == null) return false;
+
+    print('[Transcoding] Seek request to segment $segmentNumber');
+
+    // Check if segment already exists
+    if (session.isSegmentGenerated(segmentNumber)) {
+      print('[Transcoding] Segment $segmentNumber already exists');
+      return true;
+    }
+
+    // Check if FFmpeg is generating nearby segments
+    // Estimate current segment based on time elapsed since FFmpeg started
+    final currentlyGenerating = session.currentStartSegment;
+    var estimatedCurrent = currentlyGenerating;
+    if (session.ffmpegStartedAt != null) {
+      final elapsed = DateTime.now().difference(session.ffmpegStartedAt!);
+      estimatedCurrent = currentlyGenerating +
+          (elapsed.inMilliseconds / (session.segmentDuration * 1000)).floor();
+    }
+
+    // If segment is just ahead of current generation (within 5 segments), wait
+    if (segmentNumber >= currentlyGenerating &&
+        segmentNumber <= estimatedCurrent + 5) {
+      print(
+        '[Transcoding] Segment $segmentNumber is being generated '
+        '(estimated current: $estimatedCurrent), waiting...',
+      );
+      return _waitForSegment(session, segmentNumber);
+    }
+
+    // Need to restart FFmpeg from new position
+    print('[Transcoding] Restarting FFmpeg from segment $segmentNumber');
+
+    // Kill current FFmpeg
+    if (session.ffmpegProcess != null) {
+      session.ffmpegProcess!.kill();
+      await session.ffmpegProcess!.exitCode.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          session.ffmpegProcess!.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+    }
+
+    // Start new FFmpeg from segment position
+    session.currentStartSegment = segmentNumber;
+    session.ffmpegStartedAt = DateTime.now();
+
+    final args = _buildFfmpegArgs(session, startSegment: segmentNumber);
+    print('[Transcoding] New FFmpeg args: ${args.join(' ')}');
+
+    try {
+      session.ffmpegProcess = await Process.start('ffmpeg', args);
+
+      session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
+        print('[FFmpeg] $line');
+      });
+
+      // Wait for the requested segment
+      return _waitForSegment(session, segmentNumber);
+    } catch (e) {
+      print('[Transcoding] Error restarting FFmpeg: $e');
+      session.error = e.toString();
+      return false;
+    }
   }
 
   /// Get session by ID
