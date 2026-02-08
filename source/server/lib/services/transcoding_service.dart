@@ -465,9 +465,13 @@ class TranscodingService {
           (elapsed.inMilliseconds / (session.segmentDuration * 1000)).floor();
     }
 
-    // If segment is just ahead of current generation (within 5 segments), wait
-    if (segmentNumber >= currentlyGenerating &&
-        segmentNumber <= estimatedCurrent + 5) {
+    // Only wait if segment is close to current position and ahead of it
+    // If segment is behind estimatedCurrent, FFmpeg already passed it
+    // (likely skipped due to keyframe alignment) - need to restart
+    final isAheadOfCurrent = segmentNumber >= estimatedCurrent - 2;
+    final isWithinReach = segmentNumber <= estimatedCurrent + 8;
+
+    if (isAheadOfCurrent && isWithinReach) {
       print(
         '[Transcoding] Segment $segmentNumber is being generated '
         '(estimated current: $estimatedCurrent), waiting...',
