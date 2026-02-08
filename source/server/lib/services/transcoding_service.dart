@@ -236,6 +236,12 @@ class TranscodingService {
 
       // Wait for first segment to be ready
       await _waitForPlaylist(session);
+
+      // Wait for subtitles file if subtitles were requested
+      if (session.subtitleIndex != null) {
+        await _waitForSubtitles(session);
+      }
+
       session.isReady = true;
 
       print('[Transcoding] Session $streamId is ready');
@@ -266,18 +272,7 @@ class TranscodingService {
       // Audio: transcode to AAC for browser compatibility
       ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
 
-    // Extract subtitles if requested
-    if (session.subtitleIndex != null) {
-      args.addAll([
-        '-map',
-        '0:${session.subtitleIndex}',
-        '-c:s',
-        'webvtt',
-        session.subtitlesPath,
-      ]);
-    }
-
-    // HLS output settings
+    // HLS output settings (first output)
     args
       ..addAll(['-f', 'hls'])
       ..addAll(['-hls_time', '4'])
@@ -288,6 +283,17 @@ class TranscodingService {
       )
       ..addAll(['-start_number', '0'])
       ..add(session.playlistPath);
+
+    // Extract subtitles as a separate output (must come AFTER HLS output)
+    if (session.subtitleIndex != null) {
+      args.addAll([
+        '-map',
+        '0:${session.subtitleIndex}',
+        '-c:s',
+        'webvtt',
+        session.subtitlesPath,
+      ]);
+    }
 
     return args;
   }
@@ -311,6 +317,31 @@ class TranscodingService {
     }
 
     throw Exception('Timeout waiting for HLS playlist');
+  }
+
+  /// Wait for subtitles file to be created and have content
+  Future<void> _waitForSubtitles(TranscodingSession session) async {
+    final subtitlesFile = File(session.subtitlesPath);
+    var attempts = 0;
+    const maxAttempts = 20; // 10 seconds
+
+    print('[Transcoding] Waiting for subtitles: ${session.subtitlesPath}');
+
+    while (attempts < maxAttempts) {
+      if (subtitlesFile.existsSync()) {
+        final content = subtitlesFile.readAsStringSync();
+        // VTT must have WEBVTT header and at least one cue
+        if (content.contains('WEBVTT') && content.contains('-->')) {
+          print('[Transcoding] Subtitles ready, ${content.length} bytes');
+          return;
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      attempts++;
+    }
+
+    // Don't throw - subtitles are optional, just log warning
+    print('[Transcoding] Warning: Subtitles not ready after 10s');
   }
 
   /// Get session by ID

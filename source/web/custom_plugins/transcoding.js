@@ -196,21 +196,48 @@
     // Subtitle Track Formatting
     // =========================================================================
 
+    // Text-based subtitle codecs that FFmpeg can convert to WebVTT
+    var TEXT_SUBTITLE_CODECS = [
+        'subrip', 'srt', 'ass', 'ssa', 'webvtt', 'vtt',
+        'mov_text', 'text', 'ttml', 'stl'
+    ];
+
+    // Graphical subtitle codecs that CANNOT be converted to WebVTT
+    var GRAPHICAL_SUBTITLE_CODECS = [
+        'hdmv_pgs_subtitle', 'pgs', 'dvd_subtitle', 'dvdsub',
+        'dvb_subtitle', 'xsub', 'vobsub'
+    ];
+
+    function isTextSubtitle(track) {
+        if (!track || !track.codec_name) return false;
+        var codec = track.codec_name.toLowerCase();
+        // Allow if it's in text list or NOT in graphical list
+        if (TEXT_SUBTITLE_CODECS.indexOf(codec) !== -1) return true;
+        if (GRAPHICAL_SUBTITLE_CODECS.indexOf(codec) !== -1) return false;
+        // Unknown codec - assume it might be text-based
+        return true;
+    }
+
     function formatSubtitleItem(track, index) {
         var tags = track.tags || {};
         var title = tags.title || tags.handler_name || ('Субтитры ' + (index + 1));
         var lang = (tags.language || '').toUpperCase();
         var codec = (track.codec_name || '').toUpperCase();
 
+        // Mark graphical subs
+        var isGraphical = !isTextSubtitle(track);
+
         var subtitleParts = [];
         if (lang) subtitleParts.push(lang);
         if (codec) subtitleParts.push(codec);
+        if (isGraphical) subtitleParts.push('(графические)');
 
         return {
             title: title,
             subtitle: subtitleParts.join(' • '),
             track: track,
-            index: index
+            index: index,
+            isGraphical: isGraphical
         };
     }
 
@@ -254,6 +281,23 @@
     }
 
     function showSubtitleSelector(data, audioTrack, subtitleTracks, duration) {
+        // Filter to only show text-based subtitles
+        var textSubs = subtitleTracks.filter(function(track) {
+            return isTextSubtitle(track);
+        });
+
+        // If no text subtitles available
+        if (textSubs.length === 0) {
+            var hasGraphical = subtitleTracks.some(function(track) {
+                return !isTextSubtitle(track);
+            });
+            if (hasGraphical) {
+                notify('Только графические субтитры (PGS/VOBSUB) - не поддерживаются', 4000);
+            }
+            startTranscoding(data, audioTrack, null, duration);
+            return;
+        }
+
         var items = [{
             title: 'Без субтитров',
             subtitle: '',
@@ -261,7 +305,7 @@
             index: -1
         }];
 
-        subtitleTracks.forEach(function (track, index) {
+        textSubs.forEach(function (track, index) {
             items.push(formatSubtitleItem(track, index));
         });
 
@@ -452,8 +496,10 @@
                     playback.subtitles = playback.subtitles || [];
                     playback.subtitles.push({
                         label: 'Встроенные',
-                        url: addAuthToUrl(response.subtitlesUrl)
+                        url: addAuthToUrl(response.subtitlesUrl),
+                        index: 0
                     });
+                    log('Subtitles added:', response.subtitlesUrl);
                 }
 
                 log('Playing transcoded stream:', playback.url);
