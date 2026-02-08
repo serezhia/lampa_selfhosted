@@ -510,7 +510,7 @@
                 notify('Ошибка запуска транскодирования');
                 log('Start error:', error);
             },
-            { timeout: 30000 }
+            { timeout: 60000 }
         );
     }
 

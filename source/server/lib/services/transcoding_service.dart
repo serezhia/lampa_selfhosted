@@ -297,12 +297,11 @@ class TranscodingService {
         print('[Transcoding] Subtitle extraction started (runs in background)');
       }
 
-      // Wait for first segment to be ready
-      await _waitForSegment(session, 0);
-
+      // Don't wait for first segment here - let the player request it
+      // This makes start instant, segment will be waited for on first request
       session.isReady = true;
 
-      print('[Transcoding] Session $streamId is ready');
+      print('[Transcoding] Session $streamId started (segments generating)');
     } catch (e) {
       session.error = e.toString();
       print('[Transcoding] Error starting FFmpeg: $e');
@@ -410,7 +409,7 @@ class TranscodingService {
   Future<bool> _waitForSegment(
     TranscodingSession session,
     int segmentNumber, {
-    Duration timeout = const Duration(seconds: 30),
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     const checkInterval = Duration(milliseconds: 300);
     final deadline = DateTime.now().add(timeout);
