@@ -8,6 +8,34 @@
     var heartbeatTimer = null;
 
     // =========================================================================
+    // HLS.js Configuration for transcoding
+    // =========================================================================
+
+    function configureHlsTimeouts() {
+        // Set higher timeouts for HLS.js when transcoding
+        // This is needed because segments may take time to generate
+        if (typeof Hls !== 'undefined' && Hls.DefaultConfig) {
+            Hls.DefaultConfig.fragLoadingTimeOut = 60000;     // 60 sec for fragment loading
+            Hls.DefaultConfig.manifestLoadingTimeOut = 30000;  // 30 sec for manifest
+            Hls.DefaultConfig.levelLoadingTimeOut = 30000;     // 30 sec for level
+            Hls.DefaultConfig.fragLoadingMaxRetry = 6;         // More retries
+            Hls.DefaultConfig.manifestLoadingMaxRetry = 4;
+            log('HLS.js timeouts configured for transcoding');
+        }
+    }
+
+    function resetHlsTimeouts() {
+        // Reset to default values after stopping transcoding
+        if (typeof Hls !== 'undefined' && Hls.DefaultConfig) {
+            Hls.DefaultConfig.fragLoadingTimeOut = 20000;
+            Hls.DefaultConfig.manifestLoadingTimeOut = 10000;
+            Hls.DefaultConfig.levelLoadingTimeOut = 10000;
+            Hls.DefaultConfig.fragLoadingMaxRetry = 3;
+            Hls.DefaultConfig.manifestLoadingMaxRetry = 2;
+        }
+    }
+
+    // =========================================================================
     // Logging & Notifications
     // =========================================================================
 
@@ -439,6 +467,9 @@
         stopHeartbeat();
         ensureJobStopped(true);
 
+        // Configure HLS.js for longer timeouts during transcoding
+        configureHlsTimeouts();
+
         showWait('Запуск транскодирования...');
 
         var payload = {
@@ -670,6 +701,9 @@
         var job = activeJob;
         activeJob = null;
         stopHeartbeat();
+
+        // Reset HLS.js timeouts to defaults
+        resetHlsTimeouts();
 
         if (sendRemote) {
             apiRequest('POST', '/api/transcoding/' + job.streamId + '/stop', null,

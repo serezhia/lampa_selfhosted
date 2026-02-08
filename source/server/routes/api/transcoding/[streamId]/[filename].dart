@@ -53,18 +53,39 @@ Future<Response> onRequest(
     filePath = '${session.outputDir}/$filename';
     contentType = 'video/mp2t';
 
-    // Check if segment exists, if not - trigger seek on demand
-    final segmentFile = File(filePath);
+    // Check if segment exists, if not - trigger seek and wait
+    var segmentFile = File(filePath);
     if (!segmentFile.existsSync()) {
       print('[API] Segment $segmentNumber not ready, triggering seek');
       final ready = await transcoding.seekToSegment(streamId, segmentNumber);
       if (!ready) {
+        print('[API] Segment $segmentNumber seek failed');
         return Response.json(
           body: {'error': 'Segment not ready', 'segment': segmentNumber},
           statusCode: HttpStatus.serviceUnavailable,
         );
       }
     }
+
+    // Wait for segment file to actually exist (max 60 seconds)
+    // seekToSegment may return true when FFmpeg is generating nearby
+    const maxWait = Duration(seconds: 60);
+    const checkInterval = Duration(milliseconds: 200);
+    final deadline = DateTime.now().add(maxWait);
+
+    while (!segmentFile.existsSync() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(checkInterval);
+    }
+
+    if (!segmentFile.existsSync()) {
+      print('[API] Segment $segmentNumber timeout waiting for file');
+      return Response.json(
+        body: {'error': 'Segment generation timeout', 'segment': segmentNumber},
+        statusCode: HttpStatus.serviceUnavailable,
+      );
+    }
+
+    print('[API] Serving segment $segmentNumber');
   } else if (filename == 'subtitles.vtt' || filename.endsWith('.vtt')) {
     filePath = session.subtitlesPath;
     contentType = 'text/vtt';

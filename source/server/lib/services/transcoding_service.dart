@@ -38,6 +38,12 @@ class TranscodingSession {
   /// Timestamp when current FFmpeg process started
   DateTime? ffmpegStartedAt;
 
+  /// Flag to prevent concurrent seek operations
+  bool seekInProgress = false;
+
+  /// Target segment of current seek (for batching)
+  int? seekTargetSegment;
+
   /// Set of segment numbers that have been generated
   final Set<int> _generatedSegments;
 
@@ -468,6 +474,19 @@ class TranscodingService {
       return true;
     }
 
+    // Check if another seek is in progress - wait for it instead of restarting
+    if (session.seekInProgress && session.seekTargetSegment != null) {
+      // If current seek targets nearby segment, just wait for our segment
+      final targetDiff = (session.seekTargetSegment! - segmentNumber).abs();
+      if (targetDiff <= 20) {
+        print(
+          '[Transcoding] Seek in progress for segment ${session.seekTargetSegment}, '
+          'waiting for segment $segmentNumber',
+        );
+        return _waitForSegment(session, segmentNumber);
+      }
+    }
+
     // Check if FFmpeg is generating nearby segments
     // Estimate current segment based on time elapsed since FFmpeg started
     final currentlyGenerating = session.currentStartSegment;
@@ -484,12 +503,11 @@ class TranscodingService {
     );
 
     // Only wait if segment is close to current position and ahead of it
-    // If segment is behind estimatedCurrent, FFmpeg already passed it
-    // (likely skipped due to keyframe alignment) - need to restart
-    final isAheadOfCurrent = segmentNumber >= estimatedCurrent - 2;
-    final isWithinReach = segmentNumber <= estimatedCurrent + 8;
+    // Extended range: wait if segment is within 30 segments of estimated position
+    final isAheadOfStart = segmentNumber >= currentlyGenerating;
+    final isWithinReach = segmentNumber <= estimatedCurrent + 30;
 
-    if (isAheadOfCurrent && isWithinReach) {
+    if (isAheadOfStart && isWithinReach) {
       print(
         '[Transcoding] Segment $segmentNumber is being generated '
         '(estimated current: $estimatedCurrent), waiting...',
@@ -508,27 +526,34 @@ class TranscodingService {
       'offset=${segmentNumber - safeStartSegment}',
     );
 
-    // Kill current FFmpeg
-    if (session.ffmpegProcess != null) {
-      session.ffmpegProcess!.kill();
-      await session.ffmpegProcess!.exitCode.timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          session.ffmpegProcess!.kill(ProcessSignal.sigkill);
-          return -1;
-        },
-      );
-      print('[Transcoding] Previous FFmpeg process killed');
-    }
-
-    // Start new FFmpeg from safe segment position
-    session.currentStartSegment = safeStartSegment;
-    session.ffmpegStartedAt = DateTime.now();
-
-    final args = _buildFfmpegArgs(session, startSegment: safeStartSegment);
-    print('[Transcoding] FFmpeg seek args: -ss ${seekTime.toStringAsFixed(3)} -start_number $safeStartSegment');
+    // Mark seek as in progress to prevent concurrent restarts
+    session.seekInProgress = true;
+    session.seekTargetSegment = segmentNumber;
 
     try {
+      // Kill current FFmpeg
+      if (session.ffmpegProcess != null) {
+        session.ffmpegProcess!.kill();
+        await session.ffmpegProcess!.exitCode.timeout(
+          const Duration(seconds: 3),
+          onTimeout: () {
+            session.ffmpegProcess!.kill(ProcessSignal.sigkill);
+            return -1;
+          },
+        );
+        print('[Transcoding] Previous FFmpeg process killed');
+      }
+
+      // Start new FFmpeg from safe segment position
+      session.currentStartSegment = safeStartSegment;
+      session.ffmpegStartedAt = DateTime.now();
+
+      final args = _buildFfmpegArgs(session, startSegment: safeStartSegment);
+      print(
+        '[Transcoding] FFmpeg seek args: -ss ${seekTime.toStringAsFixed(3)} '
+        '-start_number $safeStartSegment',
+      );
+
       session.ffmpegProcess = await Process.start('ffmpeg', args);
 
       session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
@@ -536,10 +561,13 @@ class TranscodingService {
       });
 
       // Wait for the requested segment
-      return _waitForSegment(session, segmentNumber);
+      final result = await _waitForSegment(session, segmentNumber);
+      session.seekInProgress = false;
+      return result;
     } catch (e) {
       print('[Transcoding] Error restarting FFmpeg: $e');
       session.error = e.toString();
+      session.seekInProgress = false;
       return false;
     }
   }
