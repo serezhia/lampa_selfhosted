@@ -418,6 +418,9 @@
                     '- overriding to:', mediaDuration);
                 overrideVideoDuration(video, mediaDuration);
 
+                // Attach seeking handler directly to video element
+                attachSeekingHandler();
+
                 // Force a timeupdate-like refresh so the UI picks up the new duration
                 // immediately instead of waiting for the next natural timeupdate
                 try {
@@ -606,19 +609,47 @@
     /**
      * Handle video 'seeking' event from the player
      */
-    function handleVideoSeeking() {
+    var lastSeekTime = 0;
+    var seekThrottleMs = 1000; // Throttle seek requests to 1 per second
+
+    function handleVideoSeeking(e) {
         if (!activeJob) return;
 
         try {
-            var video = Lampa.PlayerVideo.video();
+            var video = e && e.target ? e.target : Lampa.PlayerVideo.video();
             if (video && video.currentTime !== undefined) {
                 var time = video.currentTime;
+                var now = Date.now();
+                
+                // Throttle requests
+                if (now - lastSeekTime < seekThrottleMs) {
+                    log('[SEEK] Throttled seek to', time.toFixed(2), 'sec');
+                    return;
+                }
+                lastSeekTime = now;
+
                 var segment = timeToSegment(time);
                 log('[SEEK] Video seeking to time:', time.toFixed(2), 'sec -> segment:', segment);
                 requestSeek(time);
             }
         } catch (e) {
             log('[SEEK] Error in handler:', e);
+        }
+    }
+
+    /**
+     * Attach seeking handler directly to video element
+     */
+    function attachSeekingHandler() {
+        try {
+            var video = Lampa.PlayerVideo.video();
+            if (video && !video._transcodingSeekHandler) {
+                video._transcodingSeekHandler = handleVideoSeeking;
+                video.addEventListener('seeking', handleVideoSeeking);
+                log('[SEEK] Attached seeking handler to video element');
+            }
+        } catch (e) {
+            log('[SEEK] Error attaching handler:', e);
         }
     }
 
@@ -772,7 +803,7 @@
             Lampa.PlayerVideo.listener.follow('canplay', handleVideoLoadedData);
             Lampa.PlayerVideo.listener.follow('pause', handleVideoPause);
             Lampa.PlayerVideo.listener.follow('play', handleVideoPlay);
-            Lampa.PlayerVideo.listener.follow('seeking', handleVideoSeeking);
+            // Note: 'seeking' is attached directly to video element in handleVideoLoadedData
         }
 
         // Also handle page navigation to stop transcoding
