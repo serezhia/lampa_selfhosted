@@ -452,6 +452,14 @@
             payload.duration = duration;
         }
 
+        // Pass start time from timeline (continue watching)
+        var startTime = 0;
+        if (data.timeline && data.timeline.time && data.timeline.time > 0) {
+            startTime = data.timeline.time;
+            payload.startTime = startTime;
+            log('Continue watching from:', startTime, 'seconds');
+        }
+
         // Pass movie metadata for better filenames
         if (data.movie) {
             payload.title = data.movie.title || data.movie.name || '';

@@ -20,6 +20,7 @@ Future<Response> onRequest(RequestContext context) async {
     final audioIndex = json['audioIndex'] as int? ?? 0;
     final subtitleIndex = json['subtitleIndex'] as int?;
     final duration = (json['duration'] as num?)?.toDouble();
+    final startTime = (json['startTime'] as num?)?.toDouble() ?? 0;
 
     if (src == null || src.isEmpty) {
       return Response.json(
@@ -30,6 +31,9 @@ Future<Response> onRequest(RequestContext context) async {
 
     print('[API] Starting transcoding for: $src');
     print('[API] Audio index: $audioIndex, Subtitle index: $subtitleIndex');
+    if (startTime > 0) {
+      print('[API] Start time: $startTime seconds');
+    }
 
     final transcoding = DataSource.instance.transcoding;
     final session = await transcoding.startSession(
@@ -37,6 +41,7 @@ Future<Response> onRequest(RequestContext context) async {
       audioIndex: audioIndex,
       subtitleIndex: subtitleIndex,
       duration: duration,
+      startTime: startTime,
     );
 
     final response = <String, dynamic>{

@@ -231,6 +231,7 @@ class TranscodingService {
     required int audioIndex,
     int? subtitleIndex,
     double? duration,
+    double startTime = 0,
   }) async {
     final streamId = const Uuid().v4();
     final outputDir = '$_outputBaseDir/$streamId';
@@ -249,12 +250,20 @@ class TranscodingService {
 
     _sessions[streamId] = session;
 
+    // Calculate start segment from startTime (continue watching)
+    final startSegment = startTime > 0
+        ? (startTime / session.segmentDuration).floor()
+        : 0;
+
     print('[Transcoding] Starting session $streamId');
     print('[Transcoding] Source: $sourceUrl');
     print('[Transcoding] Duration: $duration seconds');
     print('[Transcoding] Audio index: $audioIndex');
     if (subtitleIndex != null) {
       print('[Transcoding] Subtitle index: $subtitleIndex');
+    }
+    if (startTime > 0) {
+      print('[Transcoding] Start time: $startTime seconds (segment $startSegment)');
     }
 
     // Generate VOD playlist upfront if duration is known
@@ -266,9 +275,9 @@ class TranscodingService {
       );
     }
 
-    // Build FFmpeg command starting from segment 0
-    final args = _buildFfmpegArgs(session, startSegment: 0);
-    session.currentStartSegment = 0;
+    // Build FFmpeg command starting from calculated segment
+    final args = _buildFfmpegArgs(session, startSegment: startSegment);
+    session.currentStartSegment = startSegment;
     session.ffmpegStartedAt = DateTime.now();
 
     print('[Transcoding] FFmpeg args: ${args.join(' ')}');
