@@ -1,0 +1,43 @@
+# Data directory (user data, not tracked except structure)
+data/*
+!data/.gitkeep
+!data/README.md
+!data/plugins/.gitkeep
+!data/nginx/.gitkeep
+!data/jackett/
+data/jackett/*
+!data/jackett/config/.gitkeep
+!data/jackett/downloads/.gitkeep
+!data/database/.gitkeep
+!data/torrserver/
+data/torrserver/*
+!data/torrserver/config/.gitkeep
+!data/torrserver/cache/.gitkeep
+!data/transcoding/.gitkeep
+!data/certs/
+data/certs/*
+!data/certs/letsencrypt/.gitkeep
+!data/certs/acme-challenge/.gitkeep
+
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Old lampa-source (теперь клонируется при сборке)
+lampa-source/
+
+# Temporary
+tmp/
+temp/

@@ -1,0 +1,108 @@
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: lampa-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8443:8443"
+    volumes:
+      - ./data/nginx:/etc/nginx/conf.d
+      - ./data/certs/letsencrypt:/etc/letsencrypt
+      - ./data/certs/acme-challenge:/var/www/certbot
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    depends_on:
+      - lampa-frontend
+      - lampa-server
+      - torrserver
+      - jackett
+
+  certbot:
+    image: certbot/certbot
+    container_name: lampa-certbot
+    volumes:
+      - ./data/certs/letsencrypt:/etc/letsencrypt
+      - ./data/certs/acme-challenge:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  lampa-frontend:
+    image: lampa-frontend:local
+    build:
+      context: ./source/web
+      dockerfile: Dockerfile
+      args:
+        - DOMAIN=${DOMAIN}
+    container_name: lampa-frontend
+    restart: unless-stopped
+    volumes:
+      # Builtin plugins from source (git-tracked)
+      - ./source/web/custom_plugins:/plugins/builtin:ro
+      # Custom user plugins (override builtin by same filename)
+      - ./data/plugins:/plugins/custom:ro
+
+  lampa-server:
+    image: lampa-server:local
+    build:
+      context: ./source/server
+      dockerfile: Dockerfile
+    container_name: lampa-server
+    restart: unless-stopped
+    volumes:
+      - ./data/database:/app/data
+      - ./data/transcoding:/app/transcoding
+    environment:
+      - PORT=8080
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME:-@error_bot}
+      - TELEGRAM_ADMIN_PHONES=${TELEGRAM_ADMIN_PHONES}
+      - BASE_URL=${BASE_URL:-http://localhost}
+      - TRANSCODING_DIR=/app/transcoding
+      - JACKETT_API_KEY=${JACKETT_API_KEY}
+
+  torrserver:
+    image: ghcr.io/yourok/torrserver:latest
+    container_name: lampa-torrserver
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./data/torrserver/config:/opt/ts/config
+      - ./data/torrserver/cache:/opt/ts/cache
+    environment:
+      - TS_PORT=8090
+      - TS_DONTKILL=1
+      - TS_HTTPAUTH=false
+
+  jackett:
+    image: linuxserver/jackett:latest
+    container_name: lampa-jackett
+    restart: unless-stopped
+    depends_on:
+      jackett-init:
+        condition: service_completed_successfully
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Moscow
+      - AUTO_UPDATE=true
+    volumes:
+      - ./data/jackett/config:/config
+      - ./data/jackett/downloads:/downloads
+
+  # Init-контейнер для копирования предустановленных индексеров
+  jackett-init:
+    image: busybox
+    container_name: lampa-jackett-init
+    volumes:
+      - ./source/jackett/indexers:/source:ro
+      - ./data/jackett/config:/config
+    entrypoint: >
+      /bin/sh -c '
+      mkdir -p /config/Jackett/Indexers &&
+      for f in /source/*.json; do
+        [ -f "$$f" ] && cp "$$f" /config/Jackett/Indexers/ && echo "Copied: $$f";
+      done;
+      echo "Indexers ready"
+      '
+    restart: "no"

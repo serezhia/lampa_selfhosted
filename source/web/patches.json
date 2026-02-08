@@ -1,0 +1,51 @@
+{
+    "description": "Патчи для Lampa Self-Hosted (Account + Socket + Player)",
+    "version": "2.0.0",
+    "config": {
+        "SELF_HOSTED_DOMAIN": "REPLACE_WITH_DOMAIN"
+    },
+    "patches": [
+        {
+            "file": "src/core/socket.js",
+            "description": "Захардкодить WebSocket URL на свой домен",
+            "search": "    let socket_url = ws + mirror + pt\n\n    if(window.lampa_settings.socket_url) socket_url = window.lampa_settings.socket_url",
+            "replace": "    let socket_url = ws + '{{SELF_HOSTED_DOMAIN}}' + pt"
+        },
+        {
+            "file": "src/core/account/api.js",
+            "description": "Захардкодить домен для Account API",
+            "search": "function url(){\n    return Utils.protocol() + Manifest.cub_domain + '/api/'\n}",
+            "replace": "function url(){\n    return Utils.protocol() + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
+        },
+        {
+            "file": "src/interaction/settings/params.js",
+            "description": "Android: добавить inner в player_torrent и сделать его по умолчанию",
+            "search": "        select('player_torrent', {\n            'android': 'Android'\n        }, 'android')",
+            "replace": "        select('player_torrent', {\n            'inner': '#{settings_param_player_inner}',\n            'android': 'Android'\n        }, 'inner')"
+        },
+        {
+            "file": "src/interaction/settings/params.js",
+            "description": "Android: добавить inner в player и сделать его по умолчанию",
+            "search": "        select('player', {\n            'inner': '#{settings_param_player_inner}',\n            'android': 'Android'\n        }, 'android')",
+            "replace": "        select('player', {\n            'inner': '#{settings_param_player_inner}',\n            'android': 'Android'\n        }, 'inner')"
+        },
+        {
+            "file": "src/interaction/settings/params.js",
+            "description": "Android: добавить inner в player_iptv и сделать его по умолчанию",
+            "search": "        select('player_iptv', {\n            'inner': '#{settings_param_player_inner}',\n            'android': 'Android'\n        }, 'android')",
+            "replace": "        select('player_iptv', {\n            'inner': '#{settings_param_player_inner}',\n            'android': 'Android'\n        }, 'inner')"
+        },
+        {
+            "file": "src/interaction/settings/params.js",
+            "description": "Android: включить внутренний торрент-клиент по умолчанию",
+            "search": "        trigger('internal_torrclient', false)",
+            "replace": "        trigger('internal_torrclient', true)"
+        },
+        {
+            "file": "src/interaction/player.js",
+            "description": "Android: не форсить внешний плеер для торрентов",
+            "search": "    else if(Platform.is('android') && (Storage.field(player_need) == 'android' || launch_player == 'android' || data.torrent_hash)){",
+            "replace": "    else if(Platform.is('android') && (Storage.field(player_need) == 'android' || launch_player == 'android')){"
+        }
+    ]
+}

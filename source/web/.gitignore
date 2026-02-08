@@ -1,0 +1,18 @@
+# Не храним исходники lampa-source (клонируются при сборке)
+src/
+build/
+public/
+index/
+node_modules/
+package*.json
+gulpfile.js
+
+# Храним наши файлы
+!custom_plugins/
+!patches.json
+!apply-modifications.js
+!build.js
+!entrypoint.sh
+!Dockerfile
+!.dockerignore
+!README.md
