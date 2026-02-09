@@ -44,6 +44,9 @@ class TranscodingSession {
   /// Target segment of current seek (for batching)
   int? seekTargetSegment;
 
+  /// FFmpeg process exit code (null if still running)
+  int? ffmpegExitCode;
+
   /// Set of segment numbers that have been generated
   final Set<int> _generatedSegments;
 
@@ -259,9 +262,8 @@ class TranscodingService {
 
     // Calculate start segment from startTime (continue watching)
     // Start 10 segments earlier (40 sec) for keyframe alignment buffer
-    final requestedSegment = startTime > 0
-        ? (startTime / session.segmentDuration).floor()
-        : 0;
+    final requestedSegment =
+        startTime > 0 ? (startTime / session.segmentDuration).floor() : 0;
     final startSegment = (requestedSegment - 10).clamp(0, requestedSegment);
 
     print('[Transcoding] Starting session $streamId');
@@ -292,12 +294,19 @@ class TranscodingService {
     final args = _buildFfmpegArgs(session, startSegment: startSegment);
     session.currentStartSegment = startSegment;
     session.ffmpegStartedAt = DateTime.now();
+    session.ffmpegExitCode = null; // Reset exit code
 
     print('[Transcoding] FFmpeg args: ${args.join(' ')}');
 
     // Start FFmpeg process
     try {
       session.ffmpegProcess = await Process.start('ffmpeg', args);
+
+      // Track when FFmpeg exits
+      session.ffmpegProcess!.exitCode.then((code) {
+        session.ffmpegExitCode = code;
+        print('[Transcoding] FFmpeg exited with code $code');
+      });
 
       // Log stderr
       session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
@@ -343,6 +352,13 @@ class TranscodingService {
 
     final args = <String>['-y'];
 
+    // Error handling flags - ignore corrupt data from streaming sources
+    args.addAll([
+      '-err_detect', 'ignore_err', // Ignore input errors
+      '-fflags',
+      '+discardcorrupt+genpts', // Discard corrupt packets, generate PTS
+    ]);
+
     // Build source URL - add start parameter for TorrServer seeking
     var sourceUrl = session.sourceUrl;
     if (seekTime > 0 && sourceUrl.contains('/torrserver/')) {
@@ -366,7 +382,9 @@ class TranscodingService {
       // Video: copy (no transcoding)
       ..addAll(['-c:v', 'copy'])
       // Audio: transcode to AAC for browser compatibility
-      ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
+      ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2'])
+      // Increase muxing queue to handle corrupt packets
+      ..addAll(['-max_muxing_queue_size', '4096']);
 
     // HLS output settings
     args
@@ -450,6 +468,16 @@ class TranscodingService {
         print('[Transcoding] Segment $segmentNumber is ready');
         return true;
       }
+
+      // If FFmpeg has crashed, stop waiting
+      if (session.ffmpegExitCode != null) {
+        print(
+          '[Transcoding] FFmpeg died (code ${session.ffmpegExitCode}) '
+          'while waiting for segment $segmentNumber',
+        );
+        return false;
+      }
+
       await Future<void>.delayed(checkInterval);
     }
 
@@ -497,17 +525,25 @@ class TranscodingService {
           (elapsed.inMilliseconds / (session.segmentDuration * 1000)).floor();
     }
 
-    print(
-      '[Transcoding] FFmpeg status: started at segment $currentlyGenerating, '
-      'estimated current: $estimatedCurrent',
-    );
+    // Check if FFmpeg has crashed - if so, need to restart
+    final ffmpegDead = session.ffmpegExitCode != null;
+    if (ffmpegDead) {
+      print(
+        '[Transcoding] FFmpeg has exited (code ${session.ffmpegExitCode}), '
+        'need to restart for segment $segmentNumber',
+      );
+    } else {
+      print(
+        '[Transcoding] FFmpeg status: started at segment $currentlyGenerating, '
+        'estimated current: $estimatedCurrent',
+      );
+    }
 
-    // Only wait if segment is close to current position and ahead of it
-    // Extended range: wait if segment is within 30 segments of estimated position
+    // Only wait if FFmpeg is alive and segment is within reach
     final isAheadOfStart = segmentNumber >= currentlyGenerating;
     final isWithinReach = segmentNumber <= estimatedCurrent + 30;
 
-    if (isAheadOfStart && isWithinReach) {
+    if (!ffmpegDead && isAheadOfStart && isWithinReach) {
       print(
         '[Transcoding] Segment $segmentNumber is being generated '
         '(estimated current: $estimatedCurrent), waiting...',
@@ -547,6 +583,7 @@ class TranscodingService {
       // Start new FFmpeg from safe segment position
       session.currentStartSegment = safeStartSegment;
       session.ffmpegStartedAt = DateTime.now();
+      session.ffmpegExitCode = null; // Reset exit code
 
       final args = _buildFfmpegArgs(session, startSegment: safeStartSegment);
       print(
@@ -555,6 +592,12 @@ class TranscodingService {
       );
 
       session.ffmpegProcess = await Process.start('ffmpeg', args);
+
+      // Track when FFmpeg exits
+      session.ffmpegProcess!.exitCode.then((code) {
+        session.ffmpegExitCode = code;
+        print('[Transcoding] FFmpeg (seek) exited with code $code');
+      });
 
       session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
         print('[FFmpeg] $line');
