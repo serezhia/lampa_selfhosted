@@ -147,7 +147,7 @@ load_existing_config() {
         echo "  Domain:     ${DOMAIN:-<not set>}"
         echo "  URL:        $PROTOCOL://$DOMAIN"
         echo "  HTTPS:      ${USE_SSL:-false}"
-        echo "  Jackett:    ${JACKETT_API_KEY:+<configured>}${JACKETT_API_KEY:-<not set>}"
+        echo "  Jacred:    ${JACRED_API_KEY:+<configured>}${JACRED_API_KEY:-<not set>}"
         echo ""
         
         read -rp "$(echo -e "${YELLOW}Use existing configuration?${NC} (Y/n): ")" USE_EXISTING < /dev/tty
@@ -244,11 +244,13 @@ setup_repo() {
         # Already a git repo - just update
         info "Updating repository..."
         cd "$INSTALL_DIR"
-        debug "Running: git fetch origin"
-        git fetch origin
+        debug "Running: git fetch --all"
+        git fetch --all
+        debug "Running: git checkout $BRANCH"
+        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
         debug "Running: git reset --hard origin/$BRANCH"
         git reset --hard "origin/$BRANCH"
-        ok "Repository updated"
+        ok "Repository updated (branch: $BRANCH)"
     elif [ -d "$INSTALL_DIR" ]; then
         # Directory exists but not a git repo
         # Preserve user data and initialize git
@@ -282,12 +284,15 @@ setup_repo() {
         # Exit the directory before removing it!
         cd /tmp
         
-        # Remove old directory and clone fresh
+        # Remove old directory and clone fresh (full clone for branch switching)
         debug "Removing old directory..."
         rm -rf "$INSTALL_DIR"
         
-        debug "Cloning repository..."
-        git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        debug "Cloning repository (full)..."
+        git clone "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        debug "Checking out branch: $BRANCH"
+        git checkout "$BRANCH"
         
         # Restore preserved data
         info "Restoring preserved data..."
@@ -309,126 +314,74 @@ setup_repo() {
         # Cleanup backup
         rm -rf "$backup_dir"
         
-        cd "$INSTALL_DIR"
-        ok "Repository initialized with preserved data"
+        ok "Repository initialized with preserved data (branch: $BRANCH)"
     else
         # Fresh install
         info "Cloning repository..."
         debug "Creating directory: $INSTALL_DIR"
         mkdir -p "$INSTALL_DIR"
-        debug "Running: git clone --depth 1 --branch $BRANCH $REPO_URL $INSTALL_DIR"
-        git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        debug "Running: git clone $REPO_URL $INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
-        ok "Repository cloned"
+        debug "Checking out branch: $BRANCH"
+        git checkout "$BRANCH"
+        ok "Repository cloned (branch: $BRANCH)"
     fi
 }
 
 # =========================================================================
-# Generate Jackett API key
+# Generate Jacred API key
 # =========================================================================
-generate_jackett_key() {
+generate_jacred_key() {
     # Generate a random 32-character hex string
     if command -v openssl &>/dev/null; then
-        JACKETT_API_KEY=$(openssl rand -hex 16)
+        JACRED_API_KEY=$(openssl rand -hex 16)
     else
-        JACKETT_API_KEY=$(cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1)
+        JACRED_API_KEY=$(cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 32 | head -n 1)
     fi
-    debug "Generated JACKETT_API_KEY: $JACKETT_API_KEY"
+    debug "Generated JACRED_API_KEY: $JACRED_API_KEY"
 }
 
 # =========================================================================
-# Initialize Jackett config with pre-generated API key
+# Initialize Jacred config with pre-generated API key
 # =========================================================================
-init_jackett_config() {
-    info "Initializing Jackett configuration..."
+init_jacred_config() {
+    info "Initializing Jacred configuration..."
     
-    local jackett_config_dir="$INSTALL_DIR/data/jackett/config/Jackett"
-    local indexers_dir="$jackett_config_dir/Indexers"
-    local config_file="$jackett_config_dir/ServerConfig.json"
-    local template_file="$INSTALL_DIR/source/jackett/ServerConfig.json.template"
-    local source_indexers="$INSTALL_DIR/source/jackett/indexers"
+    local jacred_config_dir="$INSTALL_DIR/data/jacred/config"
+    local jacred_data_dir="$INSTALL_DIR/data/jacred/data"
+    local config_file="$jacred_config_dir/init.conf"
+    local template_file="$INSTALL_DIR/source/jacred/init.conf.template"
     
-    mkdir -p "$jackett_config_dir"
-    mkdir -p "$indexers_dir"
+    mkdir -p "$jacred_config_dir"
+    mkdir -p "$jacred_data_dir"
+    
+    # Fix permissions for Jacred (runs as uid=1000)
+    chown -R 1000:1000 "$INSTALL_DIR/data/jacred" 2>/dev/null || true
     
     # Only create config if doesn't exist
     if [ ! -f "$config_file" ]; then
-        debug "Creating Jackett ServerConfig.json from template"
-        
-        # Generate instance ID
-        local instance_id
-        instance_id=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo "lampa-$(date +%s)")
+        debug "Creating Jacred init.conf from template"
         
         # Copy template and replace placeholders
         if [ -f "$template_file" ]; then
-            sed -e "s/{{JACKETT_API_KEY}}/$JACKETT_API_KEY/g" \
-                -e "s/{{INSTANCE_ID}}/$instance_id/g" \
+            sed -e "s/{{JACRED_API_KEY}}/$JACRED_API_KEY/g" \
                 "$template_file" > "$config_file"
-            ok "Jackett config created from template"
+            ok "Jacred config created from template"
         else
-            err "Jackett template not found: $template_file"
+            err "Jacred template not found: $template_file"
             return 1
         fi
     else
-        info "Jackett config already exists, extracting API key..."
+        info "Jacred config already exists, extracting API key..."
         # Extract existing API key from config
         if command -v jq &>/dev/null; then
-            JACKETT_API_KEY=$(jq -r '.APIKey' "$config_file")
+            JACRED_API_KEY=$(jq -r '.apikey' "$config_file")
         else
-            JACKETT_API_KEY=$(grep -o '"APIKey"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | sed 's/.*"\([^"]*\)"$/\1/')
+            JACRED_API_KEY=$(grep -o '"apikey"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | sed 's/.*"\([^"]*\)"$/\1/')
         fi
-        debug "Extracted existing JACKETT_API_KEY: $JACKETT_API_KEY"
-        
-        # Migrate: add BasePathOverride if missing or null
-        local existing_base_path
-        if command -v jq &>/dev/null; then
-            existing_base_path=$(jq -r '.BasePathOverride // empty' "$config_file")
-        else
-            existing_base_path=$(grep -o '"BasePathOverride"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | sed 's/.*"\([^"]*\)"$/\1/')
-        fi
-        
-        if [ -z "$existing_base_path" ] || [ "$existing_base_path" = "null" ]; then
-            info "Migrating Jackett config: adding BasePathOverride..."
-            if command -v jq &>/dev/null; then
-                local tmp_file
-                tmp_file=$(mktemp)
-                jq '.BasePathOverride = "/jacadmin"' "$config_file" > "$tmp_file"
-                mv "$tmp_file" "$config_file"
-            else
-                sed -i 's/"BasePathOverride"[[:space:]]*:[[:space:]]*null/"BasePathOverride": "\/jacadmin"/g' "$config_file"
-            fi
-            ok "Jackett BasePathOverride migrated"
-        fi
-        
-        ok "Using existing Jackett API key"
-    fi
-    
-    # Copy pre-configured indexers (if any)
-    if [ -d "$source_indexers" ]; then
-        local copied=0
-        for indexer_file in "$source_indexers"/*.json; do
-            [ -f "$indexer_file" ] || continue
-            local filename=$(basename "$indexer_file")
-            local dest_file="$indexers_dir/$filename"
-            
-            # Don't overwrite existing indexers
-            if [ ! -f "$dest_file" ]; then
-                cp "$indexer_file" "$dest_file"
-                debug "Copied indexer: $filename"
-                ((copied++))
-            fi
-        done
-        
-        if [ $copied -gt 0 ]; then
-            ok "Copied $copied pre-configured indexer(s)"
-        fi
-    fi
-    
-    # Ensure init-indexers.sh is executable
-    local init_script="$INSTALL_DIR/source/jackett/init-indexers.sh"
-    if [ -f "$init_script" ]; then
-        chmod +x "$init_script"
-        debug "Made init-indexers.sh executable"
+        debug "Extracted existing JACRED_API_KEY: $JACRED_API_KEY"
+        ok "Using existing Jacred API key"
     fi
 }
 
@@ -441,7 +394,7 @@ write_env() {
     debug "DOMAIN=$INPUT_DOMAIN"
     debug "BASE_URL=$PROTOCOL://$INPUT_DOMAIN"
     debug "USE_SSL=$USE_SSL"
-    debug "JACKETT_API_KEY=$JACKETT_API_KEY"
+    debug "JACRED_API_KEY=$JACRED_API_KEY"
 
     cat > "$INSTALL_DIR/.env" <<EOF
 # Lampa Self-Hosted configuration
@@ -462,8 +415,8 @@ TELEGRAM_BOT_NAME=${INPUT_TG_BOT_NAME}
 # Admin phone numbers (comma-separated, e.g. +79001234567,+79007654321)
 TELEGRAM_ADMIN_PHONES=${INPUT_ADMIN_PHONES}
 
-# Jackett API Key (auto-generated, do not share!)
-JACKETT_API_KEY=${JACKETT_API_KEY}
+# Jacred API Key (auto-generated, do not share!)
+JACRED_API_KEY=${JACRED_API_KEY}
 
 # Let's Encrypt email
 LETSENCRYPT_EMAIL=${INPUT_EMAIL}
@@ -527,9 +480,28 @@ init_ssl() {
     if [ -f "$cert_path/fullchain.pem" ] && [ -f "$cert_path/privkey.pem" ]; then
         # Check if it's a real cert (not self-signed) by looking for renewal config
         if [ -f "$conf_dir/renewal/$INPUT_DOMAIN.conf" ]; then
-            info "Valid Let's Encrypt certificate found, skipping certificate setup"
-            ok "Using existing SSL certificates"
-            return
+            # Check if certificate is still valid (not expired and not expiring in 30 days)
+            local expiry_check
+            expiry_check=$(openssl x509 -checkend 2592000 -noout -in "$cert_path/fullchain.pem" 2>/dev/null && echo "valid" || echo "expiring")
+            
+            if [ "$expiry_check" = "valid" ]; then
+                # Verify certificate is for the correct domain
+                local cert_domain
+                cert_domain=$(openssl x509 -noout -subject -in "$cert_path/fullchain.pem" 2>/dev/null | grep -oP 'CN\s*=\s*\K[^,/]+' | head -1)
+                
+                if [ "$cert_domain" = "$INPUT_DOMAIN" ]; then
+                    info "Valid Let's Encrypt certificate found for $INPUT_DOMAIN"
+                    local expiry_date
+                    expiry_date=$(openssl x509 -noout -enddate -in "$cert_path/fullchain.pem" 2>/dev/null | cut -d= -f2)
+                    info "Certificate expires: $expiry_date"
+                    ok "Using existing SSL certificates"
+                    return
+                else
+                    info "Certificate is for '$cert_domain', but need '$INPUT_DOMAIN'. Will request new certificate."
+                fi
+            else
+                info "Certificate is expiring soon or expired. Will renew."
+            fi
         fi
     fi
 
@@ -545,9 +517,6 @@ init_ssl() {
             > "$data_path/letsencrypt/ssl-dhparams.pem"
     fi
 
-    # Create dummy certificate so nginx can start
-    info "Creating temporary self-signed certificate..."
-    local cert_path="$data_path/letsencrypt/live/$INPUT_DOMAIN"
     # Create dummy certificate so nginx can start
     info "Creating temporary self-signed certificate..."
     debug "Certificate path: $cert_path"
@@ -623,10 +592,6 @@ create_dirs() {
     mkdir -p "$INSTALL_DIR/data/transcoding"
     debug "Creating: $INSTALL_DIR/data/plugins"
     mkdir -p "$INSTALL_DIR/data/plugins"
-    debug "Creating: $INSTALL_DIR/data/jackett/config"
-    mkdir -p "$INSTALL_DIR/data/jackett/config"
-    debug "Creating: $INSTALL_DIR/data/jackett/downloads"
-    mkdir -p "$INSTALL_DIR/data/jackett/downloads"
     debug "Creating: $INSTALL_DIR/data/nginx"
     mkdir -p "$INSTALL_DIR/data/nginx"
     debug "Creating: $INSTALL_DIR/data/torrserver/config"
@@ -866,19 +831,19 @@ do_update() {
             generate_nginx_conf "$DOMAIN" "$USE_SSL"
         fi
         
-        # Initialize Jackett if not configured
-        if [ -z "$JACKETT_API_KEY" ]; then
-            info "Jackett not configured, initializing..."
-            generate_jackett_key
-            init_jackett_config
+        # Initialize Jacred if not configured
+        if [ -z "$JACRED_API_KEY" ]; then
+            info "Jacred not configured, initializing..."
+            generate_jacred_key
+            init_jacred_config
             # Append to .env
             echo "" >> "$INSTALL_DIR/.env"
-            echo "# Jackett API Key (auto-generated, do not share!)" >> "$INSTALL_DIR/.env"
-            echo "JACKETT_API_KEY=${JACKETT_API_KEY}" >> "$INSTALL_DIR/.env"
-            ok "Jackett API key added to .env"
+            echo "# Jacred API Key (auto-generated, do not share!)" >> "$INSTALL_DIR/.env"
+            echo "JACRED_API_KEY=${JACRED_API_KEY}" >> "$INSTALL_DIR/.env"
+            ok "Jacred API key added to .env"
         else
-            # Ensure Jackett config exists with the key from .env
-            init_jackett_config
+            # Ensure Jacred config exists with the key from .env
+            init_jacred_config
         fi
     fi
 
@@ -1010,23 +975,23 @@ main() {
     setup_repo
     create_dirs
     
-    # Generate Jackett key if not already set
-    if [ -z "$JACKETT_API_KEY" ]; then
-        generate_jackett_key
+    # Generate Jacred key if not already set
+    if [ -z "$JACRED_API_KEY" ]; then
+        generate_jacred_key
     fi
     
-    init_jackett_config
+    init_jacred_config
     
     # Write .env only if new config or missing
     if [ "$WRITE_NEW_ENV" = "true" ] || [ ! -f "$INSTALL_DIR/.env" ]; then
         write_env
     else
-        # Ensure JACKETT_API_KEY is in .env even if using existing config
-        if ! grep -q "JACKETT_API_KEY" "$INSTALL_DIR/.env" 2>/dev/null; then
-            info "Adding Jackett API key to existing .env..."
+        # Ensure JACRED_API_KEY is in .env even if using existing config
+        if ! grep -q "JACRED_API_KEY" "$INSTALL_DIR/.env" 2>/dev/null; then
+            info "Adding Jacred API key to existing .env..."
             echo "" >> "$INSTALL_DIR/.env"
-            echo "# Jackett API Key (auto-generated, do not share!)" >> "$INSTALL_DIR/.env"
-            echo "JACKETT_API_KEY=${JACKETT_API_KEY}" >> "$INSTALL_DIR/.env"
+            echo "# Jacred API Key (auto-generated, do not share!)" >> "$INSTALL_DIR/.env"
+            echo "JACRED_API_KEY=${JACRED_API_KEY}" >> "$INSTALL_DIR/.env"
         fi
     fi
     
@@ -1053,9 +1018,6 @@ main() {
     echo ""
     echo -e "  Open: ${CYAN}${PROTOCOL}://${INPUT_DOMAIN}${NC}"
     echo ""
-    echo -e "  ${YELLOW}⚠ IMPORTANT:${NC} Set Jackett admin password!"
-    echo -e "    Go to: ${CYAN}${PROTOCOL}://${INPUT_DOMAIN}/jacadmin/${NC}"
-    echo -e "    and configure admin password on first visit."
     echo ""
     echo -e "  Useful commands:"
     echo -e "    ${YELLOW}cd $INSTALL_DIR${NC}"

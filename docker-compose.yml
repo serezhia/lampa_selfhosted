@@ -16,7 +16,7 @@ services:
       - lampa-frontend
       - lampa-server
       - torrserver
-      - jackett
+      - jacred
 
   certbot:
     image: certbot/certbot
@@ -58,7 +58,9 @@ services:
       - TELEGRAM_ADMIN_PHONES=${TELEGRAM_ADMIN_PHONES}
       - BASE_URL=${BASE_URL:-http://localhost}
       - TRANSCODING_DIR=/app/transcoding
-      - JACKETT_API_KEY=${JACKETT_API_KEY}
+      - JACRED_HOST=jacred
+      - JACRED_PORT=9117
+      - JACRED_API_KEY=${JACRED_API_KEY}
 
   torrserver:
     image: ghcr.io/yourok/torrserver:latest
@@ -74,35 +76,23 @@ services:
       - TS_DONTKILL=1
       - TS_HTTPAUTH=false
 
-  jackett:
-    image: linuxserver/jackett:latest
-    container_name: lampa-jackett
+  jacred:
+    image: ghcr.io/pavelpikta/jacred-fdb:latest
+    container_name: lampa-jacred
     restart: unless-stopped
-    depends_on:
-      jackett-init:
-        condition: service_completed_successfully
     environment:
-      - PUID=1000
-      - PGID=1000
       - TZ=Europe/Moscow
-      - AUTO_UPDATE=true
+      - UMASK=0027
     volumes:
-      - ./data/jackett/config:/config
-      - ./data/jackett/downloads:/downloads
-
-  # Init-контейнер для копирования предустановленных индексеров
-  jackett-init:
-    image: busybox
-    container_name: lampa-jackett-init
-    volumes:
-      - ./source/jackett/indexers:/source:ro
-      - ./data/jackett/config:/config
-    entrypoint: >
-      /bin/sh -c '
-      mkdir -p /config/Jackett/Indexers &&
-      for f in /source/*.json; do
-        [ -f "$$f" ] && cp "$$f" /config/Jackett/Indexers/ && echo "Copied: $$f";
-      done;
-      echo "Indexers ready"
-      '
-    restart: "no"
+      - ./data/jacred/config:/app/config
+      - ./data/jacred/data:/app/Data
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9117/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          memory: 2048M

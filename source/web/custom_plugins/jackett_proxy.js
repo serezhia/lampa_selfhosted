@@ -1,21 +1,20 @@
 /**
- * Jackett Proxy Plugin - Подменяет API ключ Jackett на deviceToken
+ * Jacred/Jackett Proxy Plugin - Подменяет API ключ на deviceToken
  * 
  * Схема работы:
- * 1. Lampa делает запрос к Jackett с apikey = deviceToken
- * 2. Nginx принимает запрос и валидирует deviceToken через /api/device/validate
- * 3. Если токен валиден, Nginx подменяет apikey на реальный ключ Jackett
- * 4. Запрос проксируется в Jackett
+ * 1. Lampa делает запрос к Jackett/Jacred с apikey = deviceToken
+ * 2. Сервер принимает запрос и валидирует deviceToken
+ * 3. Запрос проксируется в Jacred (Jackett-совместимый API)
  *
  * Это позволяет:
- * - Не раскрывать реальный API ключ Jackett пользователям
- * - Контролировать доступ к Jackett через авторизацию устройств
+ * - Контролировать доступ к Jacred через авторизацию устройств
+ * - Не раскрывать прямой доступ к Jacred пользователям
  */
 
 (function () {
     'use strict';
 
-    var PLUGIN_NAME = 'JackettProxy';
+    var PLUGIN_NAME = 'JacredProxy';
 
     function log() {
         var args = Array.prototype.slice.call(arguments);
@@ -57,7 +56,7 @@
             return;
         }
 
-        log('Initializing Jackett Proxy...');
+        log('Initializing Jacred Proxy...');
 
         // Сохраняем оригинальную функцию field
         var originalField = Lampa.Storage.field;

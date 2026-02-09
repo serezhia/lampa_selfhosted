@@ -44,7 +44,7 @@
 - `modification.js` — модификации интерфейса
 - `online.js` — онлайн просмотр
 - `sync_player.js` — совместный просмотр
-- `jackett_proxy.js` — поиск через Jackett
+- `jackett_proxy.js` — поиск через Jacred (Jackett-совместимый агрегатор)
 - `transcoding.js` — транскодинг для несовместимых форматов
 - `custom_notices.js` — кастомные уведомления
 - `default_settings.js` — настройки по умолчанию
@@ -57,12 +57,12 @@
 - `/api/profiles/*` — управление профилями
 - `/api/timeline/*` — история просмотров
 - `/api/notice/*` — уведомления
-- `/api/jackett/*` — прокси к Jackett
+- `/api/jackett/*` — прокси к Jacred
 - `/api/transcoding/*` — HLS транскодинг через FFmpeg
 - `/syncplayer/*` — WebSocket для совместного просмотра
 
 #### Интеграции
-- Jackett с предустановленными индексерами (rutor, noname-club)
+- Jacred — Jackett-совместимый агрегатор торрент-индексеров
 - TorrServer для стриминга торрентов
 - FFmpeg для транскодинга в HLS
 
