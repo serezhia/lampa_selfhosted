@@ -518,24 +518,25 @@ class AppDatabase extends _$AppDatabase {
       (delete(inviteCodes)..where((c) => c.id.equals(id))).go();
 
   /// Использовать инвайт-код. Возвращает true если код валиден и был использован
+  /// Операция атомарная - защита от race condition
   Future<bool> useInviteCode(String code) async {
-    final inviteCode = await getInviteCodeByCode(code);
-    if (inviteCode == null) return false;
+    final now = DateTime.now();
 
-    // Проверяем срок действия
-    if (inviteCode.expiresAt != null &&
-        DateTime.now().isAfter(inviteCode.expiresAt!)) {
-      return false;
-    }
+    // Атомарно уменьшаем uses_left на 1 только если код существует, не истёк и ещё доступен
+    final affectedRows = await (update(inviteCodes)
+          ..where(
+            (c) =>
+                c.code.equals(code) &
+                c.usesLeft.isBiggerThanValue(0) &
+                (c.expiresAt.isNull() | c.expiresAt.isBiggerThanValue(now)),
+          ))
+        .write(
+      InviteCodesCompanion.custom(
+        usesLeft: const CustomExpression<int>('uses_left - 1'),
+      ),
+    );
 
-    // Проверяем количество использований
-    if (inviteCode.usesLeft <= 0) return false;
-
-    // Уменьшаем количество использований
-    final newUsesLeft = inviteCode.usesLeft - 1;
-    await updateInviteCode(inviteCode.copyWith(usesLeft: newUsesLeft));
-
-    return true;
+    return affectedRows > 0;
   }
 
   // =============== User blocking ===============

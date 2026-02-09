@@ -703,6 +703,19 @@ class TelegramBotService {
         return;
       }
 
+      // Проверяем блокировку пользователя
+      final currentUser =
+          await DataSource.instance.findUserByTelegramId(telegramUserId);
+      if (currentUser?.blocked ?? false) {
+        await ctx.api.sendMessage(
+          ChatID(ctx.chat!.id),
+          '🚫 *Ваш аккаунт заблокирован*\n\n'
+          'Обратитесь к администратору для разблокировки.',
+          parseMode: ParseMode.markdown,
+        );
+        return;
+      }
+
       if (data == 'main_menu') {
         // Очищаем состояния
         DataSource.instance.clearAllPendingStates(telegramUserId);
@@ -893,6 +906,9 @@ class TelegramBotService {
       // ============= Admin Users callbacks =============
       else if (data == 'admin_users') {
         await _showUsersList(ctx, messageId: messageId, edit: true);
+      } else if (data.startsWith('admin_users_page_')) {
+        final page = int.tryParse(data.substring(17)) ?? 0;
+        await _showUsersList(ctx, messageId: messageId, edit: true, page: page);
       } else if (data.startsWith('admin_user_')) {
         final userId = data.substring(11);
         await _showUserInfo(ctx, userId, messageId!);
@@ -1278,11 +1294,11 @@ class TelegramBotService {
         await _createNoticeFromPending(ctx, telegramUserId, pendingNotice);
         return;
       } else if (step == 'invite_code') {
-        // Проверяем инвайт-код для регистрации
+        // Проверяем и используем инвайт-код атомарно
         final code = inputText.toUpperCase().trim();
-        final isValid = await DataSource.instance.isInviteCodeValid(code);
+        final codeUsed = await DataSource.instance.useInviteCode(code);
 
-        if (!isValid) {
+        if (!codeUsed) {
           await ctx.reply(
             '❌ *Неверный или истёкший код*\n\n'
             'Попробуйте ещё раз или обратитесь к администратору.',
@@ -1291,8 +1307,6 @@ class TelegramBotService {
           return;
         }
 
-        // Используем код
-        await DataSource.instance.useInviteCode(code);
         DataSource.instance.clearPendingNoticeCreation(telegramUserId);
 
         // Завершаем регистрацию
@@ -2144,11 +2158,15 @@ class TelegramBotService {
 
   // ============= Методы управления пользователями (Admin) =============
 
-  /// Показать список пользователей
+  /// Количество пользователей на странице
+  static const int _usersPerPage = 8;
+
+  /// Показать список пользователей с пагинацией
   Future<void> _showUsersList(
     Context ctx, {
     int? messageId,
     bool edit = false,
+    int page = 0,
   }) async {
     final users = await DataSource.instance.getAllUsers();
 
@@ -2177,18 +2195,35 @@ class TelegramBotService {
       return;
     }
 
-    for (final user in users.take(10)) {
+    final totalPages = (users.length / _usersPerPage).ceil();
+    final startIndex = page * _usersPerPage;
+    final endIndex = (startIndex + _usersPerPage).clamp(0, users.length);
+    final pageUsers = users.sublist(startIndex, endIndex);
+
+    for (final user in pageUsers) {
       final blocked = user.blocked ? '🚫 ' : '';
       final name = user.firstName ?? user.phone ?? user.id;
       final shortName = name.length > 20 ? '${name.substring(0, 17)}...' : name;
-      final shortId = user.id.length > 8 ? user.id.substring(0, 8) : user.id;
+      // Используем полный user.id для избежания коллизий
       keyboard =
-          keyboard.add('$blocked$shortName', 'admin_user_$shortId').row();
+          keyboard.add('$blocked$shortName', 'admin_user_${user.id}').row();
+    }
+
+    // Кнопки пагинации
+    if (totalPages > 1) {
+      if (page > 0) {
+        keyboard = keyboard.add('⬅️ Назад', 'admin_users_page_${page - 1}');
+      }
+      if (page < totalPages - 1) {
+        keyboard = keyboard.add('➡️ Далее', 'admin_users_page_${page + 1}');
+      }
+      keyboard = keyboard.row();
     }
 
     keyboard = keyboard.add('« Назад', 'admin_menu');
 
-    final text = '👥 *Пользователи* (${users.length})\n\n'
+    final text = '👥 *Пользователи* (${users.length})\n'
+        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n'
         '🚫 — заблокирован\n\n'
         'Выберите пользователя:';
 
@@ -2212,11 +2247,10 @@ class TelegramBotService {
   /// Показать информацию о пользователе
   Future<void> _showUserInfo(
     Context ctx,
-    String shortId,
+    String userId,
     int messageId,
   ) async {
-    final users = await DataSource.instance.getAllUsers();
-    final user = users.where((u) => u.id.startsWith(shortId)).firstOrNull;
+    final user = await DataSource.instance.getUserById(userId);
 
     if (user == null) {
       final keyboard = InlineKeyboard().add('« Назад', 'admin_users');
@@ -2241,14 +2275,14 @@ class TelegramBotService {
     var keyboard = InlineKeyboard();
 
     if (user.blocked) {
-      keyboard = keyboard.add('✅ Разблокировать', 'admin_unblock_user_$shortId');
+      keyboard = keyboard.add('✅ Разблокировать', 'admin_unblock_user_${user.id}');
     } else {
-      keyboard = keyboard.add('🚫 Заблокировать', 'admin_block_user_$shortId');
+      keyboard = keyboard.add('🚫 Заблокировать', 'admin_block_user_${user.id}');
     }
 
     keyboard = keyboard
         .row()
-        .add('🗑 Удалить', 'admin_delete_user_$shortId')
+        .add('🗑 Удалить', 'admin_delete_user_${user.id}')
         .row()
         .add('« Назад', 'admin_users');
 
@@ -2271,9 +2305,8 @@ class TelegramBotService {
   }
 
   /// Заблокировать пользователя
-  Future<void> _blockUser(Context ctx, String shortId, int messageId) async {
-    final users = await DataSource.instance.getAllUsers();
-    final user = users.where((u) => u.id.startsWith(shortId)).firstOrNull;
+  Future<void> _blockUser(Context ctx, String userId, int messageId) async {
+    final user = await DataSource.instance.getUserById(userId);
 
     if (user == null) {
       await _showUsersList(ctx, messageId: messageId, edit: true);
@@ -2281,13 +2314,12 @@ class TelegramBotService {
     }
 
     await DataSource.instance.blockUser(user.id);
-    await _showUserInfo(ctx, shortId, messageId);
+    await _showUserInfo(ctx, userId, messageId);
   }
 
   /// Разблокировать пользователя
-  Future<void> _unblockUser(Context ctx, String shortId, int messageId) async {
-    final users = await DataSource.instance.getAllUsers();
-    final user = users.where((u) => u.id.startsWith(shortId)).firstOrNull;
+  Future<void> _unblockUser(Context ctx, String userId, int messageId) async {
+    final user = await DataSource.instance.getUserById(userId);
 
     if (user == null) {
       await _showUsersList(ctx, messageId: messageId, edit: true);
@@ -2295,17 +2327,16 @@ class TelegramBotService {
     }
 
     await DataSource.instance.unblockUser(user.id);
-    await _showUserInfo(ctx, shortId, messageId);
+    await _showUserInfo(ctx, userId, messageId);
   }
 
   /// Запрос подтверждения удаления пользователя
   Future<void> _deleteUserConfirm(
     Context ctx,
-    String shortId,
+    String userId,
     int messageId,
   ) async {
-    final users = await DataSource.instance.getAllUsers();
-    final user = users.where((u) => u.id.startsWith(shortId)).firstOrNull;
+    final user = await DataSource.instance.getUserById(userId);
 
     if (user == null) {
       await _showUsersList(ctx, messageId: messageId, edit: true);
@@ -2315,9 +2346,9 @@ class TelegramBotService {
     final name = user.firstName ?? user.phone ?? user.id;
 
     final keyboard = InlineKeyboard()
-        .add('✅ Да, удалить', 'confirm_delete_user_$shortId')
+        .add('✅ Да, удалить', 'confirm_delete_user_${user.id}')
         .row()
-        .add('❌ Отмена', 'admin_user_$shortId');
+        .add('❌ Отмена', 'admin_user_${user.id}');
 
     await ctx.api.editMessageText(
       ChatID(ctx.chat!.id),
@@ -2337,11 +2368,10 @@ class TelegramBotService {
   /// Подтверждение удаления пользователя
   Future<void> _confirmDeleteUser(
     Context ctx,
-    String shortId,
+    String userId,
     int messageId,
   ) async {
-    final users = await DataSource.instance.getAllUsers();
-    final user = users.where((u) => u.id.startsWith(shortId)).firstOrNull;
+    final user = await DataSource.instance.getUserById(userId);
 
     if (user == null) {
       await _showUsersList(ctx, messageId: messageId, edit: true);
@@ -2445,6 +2475,21 @@ class TelegramBotService {
     String mode,
     int messageId,
   ) async {
+    // Допустимые режимы регистрации
+    const allowedModes = <String>{
+      'free',
+      'approval',
+      'allowed_phones',
+      'invite_code',
+    };
+
+    if (!allowedModes.contains(mode)) {
+      _log('Попытка установить некорректный режим регистрации: "$mode"');
+      // Не меняем настройки, просто показываем текущие
+      await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
     await DataSource.instance.setRegistrationMode(mode);
     await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
   }

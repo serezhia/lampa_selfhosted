@@ -613,25 +613,41 @@ class DataSource {
       _db.getInviteCodeByCode(code);
 
   /// Создать инвайт-код
+  /// Использует retry loop для обработки редких коллизий кодов
   Future<InviteCode> createInviteCode({
     required bool oneTime,
     int usesLeft = 1,
     DateTime? expiresAt,
-  }) {
-    // Генерируем случайный код
-    final code = List.generate(8, (_) {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      return chars[_secureRandom.nextInt(chars.length)];
-    }).join();
+  }) async {
+    const maxAttempts = 5;
 
-    return _db.insertInviteCode(
-      InviteCodesCompanion(
-        code: Value(code),
-        oneTime: Value(oneTime),
-        usesLeft: Value(usesLeft),
-        expiresAt: Value(expiresAt),
-      ),
-    );
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      // Генерируем случайный код
+      final code = List.generate(8, (_) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        return chars[_secureRandom.nextInt(chars.length)];
+      }).join();
+
+      try {
+        return await _db.insertInviteCode(
+          InviteCodesCompanion(
+            code: Value(code),
+            oneTime: Value(oneTime),
+            usesLeft: Value(usesLeft),
+            expiresAt: Value(expiresAt),
+          ),
+        );
+      } catch (e) {
+        // При коллизии UNIQUE constraint пробуем снова
+        if (attempt == maxAttempts - 1) {
+          rethrow; // Исчерпаны попытки
+        }
+        // Продолжаем с новым кодом
+      }
+    }
+
+    // Этот код не должен выполняться, но нужен для компилятора
+    throw StateError('Failed to generate unique invite code');
   }
 
   /// Удалить инвайт-код
