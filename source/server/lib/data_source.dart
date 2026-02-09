@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:drift/drift.dart';
 import 'package:lampa_server/database/database.dart';
 import 'package:lampa_server/services/transcoding_service.dart';
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
 
 /// Источник данных для приложения (Singleton)
 /// Обёртка над Drift базой данных
@@ -637,16 +638,16 @@ class DataSource {
             expiresAt: Value(expiresAt),
           ),
         );
-      } catch (e) {
-        // При коллизии UNIQUE constraint пробуем снова
-        if (attempt == maxAttempts - 1) {
-          rethrow; // Исчерпаны попытки
+      } on SqliteException catch (e) {
+        // Retry only on UNIQUE constraint violation (code 2067)
+        if (e.extendedResultCode != 2067 || attempt == maxAttempts - 1) {
+          rethrow;
         }
-        // Продолжаем с новым кодом
+        // Continue with a new code
       }
     }
 
-    // Этот код не должен выполняться, но нужен для компилятора
+    // This code should not execute, but is needed for the compiler
     throw StateError('Failed to generate unique invite code');
   }
 
