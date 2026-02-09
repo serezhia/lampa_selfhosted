@@ -356,6 +356,9 @@ init_jacred_config() {
     mkdir -p "$jacred_config_dir"
     mkdir -p "$jacred_data_dir"
     
+    # Fix permissions for Jacred (runs as uid=1000)
+    chown -R 1000:1000 "$INSTALL_DIR/data/jacred" 2>/dev/null || true
+    
     # Only create config if doesn't exist
     if [ ! -f "$config_file" ]; then
         debug "Creating Jacred init.conf from template"
@@ -573,10 +576,6 @@ create_dirs() {
     mkdir -p "$INSTALL_DIR/data/transcoding"
     debug "Creating: $INSTALL_DIR/data/plugins"
     mkdir -p "$INSTALL_DIR/data/plugins"
-    debug "Creating: $INSTALL_DIR/data/jackett/config"
-    mkdir -p "$INSTALL_DIR/data/jackett/config"
-    debug "Creating: $INSTALL_DIR/data/jackett/downloads"
-    mkdir -p "$INSTALL_DIR/data/jackett/downloads"
     debug "Creating: $INSTALL_DIR/data/nginx"
     mkdir -p "$INSTALL_DIR/data/nginx"
     debug "Creating: $INSTALL_DIR/data/torrserver/config"
@@ -1003,9 +1002,6 @@ main() {
     echo ""
     echo -e "  Open: ${CYAN}${PROTOCOL}://${INPUT_DOMAIN}${NC}"
     echo ""
-    echo -e "  ${YELLOW}⚠ IMPORTANT:${NC} Set Jackett admin password!"
-    echo -e "    Go to: ${CYAN}${PROTOCOL}://${INPUT_DOMAIN}/jacadmin/${NC}"
-    echo -e "    and configure admin password on first visit."
     echo ""
     echo -e "  Useful commands:"
     echo -e "    ${YELLOW}cd $INSTALL_DIR${NC}"
