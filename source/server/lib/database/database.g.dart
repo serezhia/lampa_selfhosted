@@ -61,6 +61,16 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
   late final GeneratedColumn<String> lastName = GeneratedColumn<String>(
       'last_name', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _blockedMeta =
+      const VerificationMeta('blocked');
+  @override
+  late final GeneratedColumn<bool> blocked = GeneratedColumn<bool>(
+      'blocked', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("blocked" IN (0, 1))'),
+      defaultValue: const Constant(false));
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -71,7 +81,8 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
         telegramId,
         phone,
         firstName,
-        lastName
+        lastName,
+        blocked
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -130,6 +141,10 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
       context.handle(_lastNameMeta,
           lastName.isAcceptableOrUnknown(data['last_name']!, _lastNameMeta));
     }
+    if (data.containsKey('blocked')) {
+      context.handle(_blockedMeta,
+          blocked.isAcceptableOrUnknown(data['blocked']!, _blockedMeta));
+    }
     return context;
   }
 
@@ -157,6 +172,8 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
           .read(DriftSqlType.string, data['${effectivePrefix}first_name']),
       lastName: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}last_name']),
+      blocked: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}blocked'])!,
     );
   }
 
@@ -176,6 +193,7 @@ class User extends DataClass implements Insertable<User> {
   final String? phone;
   final String? firstName;
   final String? lastName;
+  final bool blocked;
   const User(
       {required this.id,
       required this.email,
@@ -185,7 +203,8 @@ class User extends DataClass implements Insertable<User> {
       this.telegramId,
       this.phone,
       this.firstName,
-      this.lastName});
+      this.lastName,
+      required this.blocked});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -206,6 +225,7 @@ class User extends DataClass implements Insertable<User> {
     if (!nullToAbsent || lastName != null) {
       map['last_name'] = Variable<String>(lastName);
     }
+    map['blocked'] = Variable<bool>(blocked);
     return map;
   }
 
@@ -227,6 +247,7 @@ class User extends DataClass implements Insertable<User> {
       lastName: lastName == null && nullToAbsent
           ? const Value.absent()
           : Value(lastName),
+      blocked: Value(blocked),
     );
   }
 
@@ -243,6 +264,7 @@ class User extends DataClass implements Insertable<User> {
       phone: serializer.fromJson<String?>(json['phone']),
       firstName: serializer.fromJson<String?>(json['firstName']),
       lastName: serializer.fromJson<String?>(json['lastName']),
+      blocked: serializer.fromJson<bool>(json['blocked']),
     );
   }
   @override
@@ -258,6 +280,7 @@ class User extends DataClass implements Insertable<User> {
       'phone': serializer.toJson<String?>(phone),
       'firstName': serializer.toJson<String?>(firstName),
       'lastName': serializer.toJson<String?>(lastName),
+      'blocked': serializer.toJson<bool>(blocked),
     };
   }
 
@@ -270,7 +293,8 @@ class User extends DataClass implements Insertable<User> {
           Value<String?> telegramId = const Value.absent(),
           Value<String?> phone = const Value.absent(),
           Value<String?> firstName = const Value.absent(),
-          Value<String?> lastName = const Value.absent()}) =>
+          Value<String?> lastName = const Value.absent(),
+          bool? blocked}) =>
       User(
         id: id ?? this.id,
         email: email ?? this.email,
@@ -281,6 +305,7 @@ class User extends DataClass implements Insertable<User> {
         phone: phone.present ? phone.value : this.phone,
         firstName: firstName.present ? firstName.value : this.firstName,
         lastName: lastName.present ? lastName.value : this.lastName,
+        blocked: blocked ?? this.blocked,
       );
   User copyWithCompanion(UsersCompanion data) {
     return User(
@@ -296,6 +321,7 @@ class User extends DataClass implements Insertable<User> {
       phone: data.phone.present ? data.phone.value : this.phone,
       firstName: data.firstName.present ? data.firstName.value : this.firstName,
       lastName: data.lastName.present ? data.lastName.value : this.lastName,
+      blocked: data.blocked.present ? data.blocked.value : this.blocked,
     );
   }
 
@@ -310,14 +336,15 @@ class User extends DataClass implements Insertable<User> {
           ..write('telegramId: $telegramId, ')
           ..write('phone: $phone, ')
           ..write('firstName: $firstName, ')
-          ..write('lastName: $lastName')
+          ..write('lastName: $lastName, ')
+          ..write('blocked: $blocked')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode => Object.hash(id, email, passwordHash, premium, createdAt,
-      telegramId, phone, firstName, lastName);
+      telegramId, phone, firstName, lastName, blocked);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -330,7 +357,8 @@ class User extends DataClass implements Insertable<User> {
           other.telegramId == this.telegramId &&
           other.phone == this.phone &&
           other.firstName == this.firstName &&
-          other.lastName == this.lastName);
+          other.lastName == this.lastName &&
+          other.blocked == this.blocked);
 }
 
 class UsersCompanion extends UpdateCompanion<User> {
@@ -343,6 +371,7 @@ class UsersCompanion extends UpdateCompanion<User> {
   final Value<String?> phone;
   final Value<String?> firstName;
   final Value<String?> lastName;
+  final Value<bool> blocked;
   final Value<int> rowid;
   const UsersCompanion({
     this.id = const Value.absent(),
@@ -354,6 +383,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.phone = const Value.absent(),
     this.firstName = const Value.absent(),
     this.lastName = const Value.absent(),
+    this.blocked = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   UsersCompanion.insert({
@@ -366,6 +396,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     this.phone = const Value.absent(),
     this.firstName = const Value.absent(),
     this.lastName = const Value.absent(),
+    this.blocked = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         email = Value(email),
@@ -381,6 +412,7 @@ class UsersCompanion extends UpdateCompanion<User> {
     Expression<String>? phone,
     Expression<String>? firstName,
     Expression<String>? lastName,
+    Expression<bool>? blocked,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -393,6 +425,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       if (phone != null) 'phone': phone,
       if (firstName != null) 'first_name': firstName,
       if (lastName != null) 'last_name': lastName,
+      if (blocked != null) 'blocked': blocked,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -407,6 +440,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       Value<String?>? phone,
       Value<String?>? firstName,
       Value<String?>? lastName,
+      Value<bool>? blocked,
       Value<int>? rowid}) {
     return UsersCompanion(
       id: id ?? this.id,
@@ -418,6 +452,7 @@ class UsersCompanion extends UpdateCompanion<User> {
       phone: phone ?? this.phone,
       firstName: firstName ?? this.firstName,
       lastName: lastName ?? this.lastName,
+      blocked: blocked ?? this.blocked,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -452,6 +487,9 @@ class UsersCompanion extends UpdateCompanion<User> {
     if (lastName.present) {
       map['last_name'] = Variable<String>(lastName.value);
     }
+    if (blocked.present) {
+      map['blocked'] = Variable<bool>(blocked.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -470,6 +508,7 @@ class UsersCompanion extends UpdateCompanion<User> {
           ..write('phone: $phone, ')
           ..write('firstName: $firstName, ')
           ..write('lastName: $lastName, ')
+          ..write('blocked: $blocked, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3147,6 +3186,874 @@ class NoticesCompanion extends UpdateCompanion<Notice> {
   }
 }
 
+class $SettingsTable extends Settings with TableInfo<$SettingsTable, Setting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+      'key', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+      'value', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'settings';
+  @override
+  VerificationContext validateIntegrity(Insertable<Setting> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+          _keyMeta, key.isAcceptableOrUnknown(data['key']!, _keyMeta));
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+          _valueMeta, value.isAcceptableOrUnknown(data['value']!, _valueMeta));
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  Setting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return Setting(
+      key: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}key'])!,
+      value: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}value'])!,
+    );
+  }
+
+  @override
+  $SettingsTable createAlias(String alias) {
+    return $SettingsTable(attachedDatabase, alias);
+  }
+}
+
+class Setting extends DataClass implements Insertable<Setting> {
+  final String key;
+  final String value;
+  const Setting({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  SettingsCompanion toCompanion(bool nullToAbsent) {
+    return SettingsCompanion(
+      key: Value(key),
+      value: Value(value),
+    );
+  }
+
+  factory Setting.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return Setting(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  Setting copyWith({String? key, String? value}) => Setting(
+        key: key ?? this.key,
+        value: value ?? this.value,
+      );
+  Setting copyWithCompanion(SettingsCompanion data) {
+    return Setting(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('Setting(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is Setting && other.key == this.key && other.value == this.value);
+}
+
+class SettingsCompanion extends UpdateCompanion<Setting> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const SettingsCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SettingsCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  })  : key = Value(key),
+        value = Value(value);
+  static Insertable<Setting> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SettingsCompanion copyWith(
+      {Value<String>? key, Value<String>? value, Value<int>? rowid}) {
+    return SettingsCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SettingsCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $PendingRegistrationsTable extends PendingRegistrations
+    with TableInfo<$PendingRegistrationsTable, PendingRegistration> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PendingRegistrationsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _telegramIdMeta =
+      const VerificationMeta('telegramId');
+  @override
+  late final GeneratedColumn<String> telegramId = GeneratedColumn<String>(
+      'telegram_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _phoneMeta = const VerificationMeta('phone');
+  @override
+  late final GeneratedColumn<String> phone = GeneratedColumn<String>(
+      'phone', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _firstNameMeta =
+      const VerificationMeta('firstName');
+  @override
+  late final GeneratedColumn<String> firstName = GeneratedColumn<String>(
+      'first_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastNameMeta =
+      const VerificationMeta('lastName');
+  @override
+  late final GeneratedColumn<String> lastName = GeneratedColumn<String>(
+      'last_name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, telegramId, phone, firstName, lastName, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'pending_registrations';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<PendingRegistration> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('telegram_id')) {
+      context.handle(
+          _telegramIdMeta,
+          telegramId.isAcceptableOrUnknown(
+              data['telegram_id']!, _telegramIdMeta));
+    } else if (isInserting) {
+      context.missing(_telegramIdMeta);
+    }
+    if (data.containsKey('phone')) {
+      context.handle(
+          _phoneMeta, phone.isAcceptableOrUnknown(data['phone']!, _phoneMeta));
+    } else if (isInserting) {
+      context.missing(_phoneMeta);
+    }
+    if (data.containsKey('first_name')) {
+      context.handle(_firstNameMeta,
+          firstName.isAcceptableOrUnknown(data['first_name']!, _firstNameMeta));
+    }
+    if (data.containsKey('last_name')) {
+      context.handle(_lastNameMeta,
+          lastName.isAcceptableOrUnknown(data['last_name']!, _lastNameMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PendingRegistration map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PendingRegistration(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      telegramId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}telegram_id'])!,
+      phone: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}phone'])!,
+      firstName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}first_name']),
+      lastName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_name']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $PendingRegistrationsTable createAlias(String alias) {
+    return $PendingRegistrationsTable(attachedDatabase, alias);
+  }
+}
+
+class PendingRegistration extends DataClass
+    implements Insertable<PendingRegistration> {
+  final int id;
+  final String telegramId;
+  final String phone;
+  final String? firstName;
+  final String? lastName;
+  final DateTime createdAt;
+  const PendingRegistration(
+      {required this.id,
+      required this.telegramId,
+      required this.phone,
+      this.firstName,
+      this.lastName,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['telegram_id'] = Variable<String>(telegramId);
+    map['phone'] = Variable<String>(phone);
+    if (!nullToAbsent || firstName != null) {
+      map['first_name'] = Variable<String>(firstName);
+    }
+    if (!nullToAbsent || lastName != null) {
+      map['last_name'] = Variable<String>(lastName);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  PendingRegistrationsCompanion toCompanion(bool nullToAbsent) {
+    return PendingRegistrationsCompanion(
+      id: Value(id),
+      telegramId: Value(telegramId),
+      phone: Value(phone),
+      firstName: firstName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(firstName),
+      lastName: lastName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastName),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory PendingRegistration.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PendingRegistration(
+      id: serializer.fromJson<int>(json['id']),
+      telegramId: serializer.fromJson<String>(json['telegramId']),
+      phone: serializer.fromJson<String>(json['phone']),
+      firstName: serializer.fromJson<String?>(json['firstName']),
+      lastName: serializer.fromJson<String?>(json['lastName']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'telegramId': serializer.toJson<String>(telegramId),
+      'phone': serializer.toJson<String>(phone),
+      'firstName': serializer.toJson<String?>(firstName),
+      'lastName': serializer.toJson<String?>(lastName),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  PendingRegistration copyWith(
+          {int? id,
+          String? telegramId,
+          String? phone,
+          Value<String?> firstName = const Value.absent(),
+          Value<String?> lastName = const Value.absent(),
+          DateTime? createdAt}) =>
+      PendingRegistration(
+        id: id ?? this.id,
+        telegramId: telegramId ?? this.telegramId,
+        phone: phone ?? this.phone,
+        firstName: firstName.present ? firstName.value : this.firstName,
+        lastName: lastName.present ? lastName.value : this.lastName,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  PendingRegistration copyWithCompanion(PendingRegistrationsCompanion data) {
+    return PendingRegistration(
+      id: data.id.present ? data.id.value : this.id,
+      telegramId:
+          data.telegramId.present ? data.telegramId.value : this.telegramId,
+      phone: data.phone.present ? data.phone.value : this.phone,
+      firstName: data.firstName.present ? data.firstName.value : this.firstName,
+      lastName: data.lastName.present ? data.lastName.value : this.lastName,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingRegistration(')
+          ..write('id: $id, ')
+          ..write('telegramId: $telegramId, ')
+          ..write('phone: $phone, ')
+          ..write('firstName: $firstName, ')
+          ..write('lastName: $lastName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, telegramId, phone, firstName, lastName, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PendingRegistration &&
+          other.id == this.id &&
+          other.telegramId == this.telegramId &&
+          other.phone == this.phone &&
+          other.firstName == this.firstName &&
+          other.lastName == this.lastName &&
+          other.createdAt == this.createdAt);
+}
+
+class PendingRegistrationsCompanion
+    extends UpdateCompanion<PendingRegistration> {
+  final Value<int> id;
+  final Value<String> telegramId;
+  final Value<String> phone;
+  final Value<String?> firstName;
+  final Value<String?> lastName;
+  final Value<DateTime> createdAt;
+  const PendingRegistrationsCompanion({
+    this.id = const Value.absent(),
+    this.telegramId = const Value.absent(),
+    this.phone = const Value.absent(),
+    this.firstName = const Value.absent(),
+    this.lastName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  PendingRegistrationsCompanion.insert({
+    this.id = const Value.absent(),
+    required String telegramId,
+    required String phone,
+    this.firstName = const Value.absent(),
+    this.lastName = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  })  : telegramId = Value(telegramId),
+        phone = Value(phone);
+  static Insertable<PendingRegistration> custom({
+    Expression<int>? id,
+    Expression<String>? telegramId,
+    Expression<String>? phone,
+    Expression<String>? firstName,
+    Expression<String>? lastName,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (telegramId != null) 'telegram_id': telegramId,
+      if (phone != null) 'phone': phone,
+      if (firstName != null) 'first_name': firstName,
+      if (lastName != null) 'last_name': lastName,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  PendingRegistrationsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? telegramId,
+      Value<String>? phone,
+      Value<String?>? firstName,
+      Value<String?>? lastName,
+      Value<DateTime>? createdAt}) {
+    return PendingRegistrationsCompanion(
+      id: id ?? this.id,
+      telegramId: telegramId ?? this.telegramId,
+      phone: phone ?? this.phone,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (telegramId.present) {
+      map['telegram_id'] = Variable<String>(telegramId.value);
+    }
+    if (phone.present) {
+      map['phone'] = Variable<String>(phone.value);
+    }
+    if (firstName.present) {
+      map['first_name'] = Variable<String>(firstName.value);
+    }
+    if (lastName.present) {
+      map['last_name'] = Variable<String>(lastName.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PendingRegistrationsCompanion(')
+          ..write('id: $id, ')
+          ..write('telegramId: $telegramId, ')
+          ..write('phone: $phone, ')
+          ..write('firstName: $firstName, ')
+          ..write('lastName: $lastName, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $InviteCodesTable extends InviteCodes
+    with TableInfo<$InviteCodesTable, InviteCode> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $InviteCodesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+      'code', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints: GeneratedColumn.constraintIsAlways('UNIQUE'));
+  static const VerificationMeta _oneTimeMeta =
+      const VerificationMeta('oneTime');
+  @override
+  late final GeneratedColumn<bool> oneTime = GeneratedColumn<bool>(
+      'one_time', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('CHECK ("one_time" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _usesLeftMeta =
+      const VerificationMeta('usesLeft');
+  @override
+  late final GeneratedColumn<int> usesLeft = GeneratedColumn<int>(
+      'uses_left', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  static const VerificationMeta _expiresAtMeta =
+      const VerificationMeta('expiresAt');
+  @override
+  late final GeneratedColumn<DateTime> expiresAt = GeneratedColumn<DateTime>(
+      'expires_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, code, oneTime, usesLeft, createdAt, expiresAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'invite_codes';
+  @override
+  VerificationContext validateIntegrity(Insertable<InviteCode> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('code')) {
+      context.handle(
+          _codeMeta, code.isAcceptableOrUnknown(data['code']!, _codeMeta));
+    } else if (isInserting) {
+      context.missing(_codeMeta);
+    }
+    if (data.containsKey('one_time')) {
+      context.handle(_oneTimeMeta,
+          oneTime.isAcceptableOrUnknown(data['one_time']!, _oneTimeMeta));
+    }
+    if (data.containsKey('uses_left')) {
+      context.handle(_usesLeftMeta,
+          usesLeft.isAcceptableOrUnknown(data['uses_left']!, _usesLeftMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    if (data.containsKey('expires_at')) {
+      context.handle(_expiresAtMeta,
+          expiresAt.isAcceptableOrUnknown(data['expires_at']!, _expiresAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InviteCode map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InviteCode(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      code: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}code'])!,
+      oneTime: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}one_time'])!,
+      usesLeft: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uses_left'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      expiresAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}expires_at']),
+    );
+  }
+
+  @override
+  $InviteCodesTable createAlias(String alias) {
+    return $InviteCodesTable(attachedDatabase, alias);
+  }
+}
+
+class InviteCode extends DataClass implements Insertable<InviteCode> {
+  final int id;
+  final String code;
+  final bool oneTime;
+  final int usesLeft;
+  final DateTime createdAt;
+  final DateTime? expiresAt;
+  const InviteCode(
+      {required this.id,
+      required this.code,
+      required this.oneTime,
+      required this.usesLeft,
+      required this.createdAt,
+      this.expiresAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['code'] = Variable<String>(code);
+    map['one_time'] = Variable<bool>(oneTime);
+    map['uses_left'] = Variable<int>(usesLeft);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || expiresAt != null) {
+      map['expires_at'] = Variable<DateTime>(expiresAt);
+    }
+    return map;
+  }
+
+  InviteCodesCompanion toCompanion(bool nullToAbsent) {
+    return InviteCodesCompanion(
+      id: Value(id),
+      code: Value(code),
+      oneTime: Value(oneTime),
+      usesLeft: Value(usesLeft),
+      createdAt: Value(createdAt),
+      expiresAt: expiresAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiresAt),
+    );
+  }
+
+  factory InviteCode.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InviteCode(
+      id: serializer.fromJson<int>(json['id']),
+      code: serializer.fromJson<String>(json['code']),
+      oneTime: serializer.fromJson<bool>(json['oneTime']),
+      usesLeft: serializer.fromJson<int>(json['usesLeft']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      expiresAt: serializer.fromJson<DateTime?>(json['expiresAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'code': serializer.toJson<String>(code),
+      'oneTime': serializer.toJson<bool>(oneTime),
+      'usesLeft': serializer.toJson<int>(usesLeft),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'expiresAt': serializer.toJson<DateTime?>(expiresAt),
+    };
+  }
+
+  InviteCode copyWith(
+          {int? id,
+          String? code,
+          bool? oneTime,
+          int? usesLeft,
+          DateTime? createdAt,
+          Value<DateTime?> expiresAt = const Value.absent()}) =>
+      InviteCode(
+        id: id ?? this.id,
+        code: code ?? this.code,
+        oneTime: oneTime ?? this.oneTime,
+        usesLeft: usesLeft ?? this.usesLeft,
+        createdAt: createdAt ?? this.createdAt,
+        expiresAt: expiresAt.present ? expiresAt.value : this.expiresAt,
+      );
+  InviteCode copyWithCompanion(InviteCodesCompanion data) {
+    return InviteCode(
+      id: data.id.present ? data.id.value : this.id,
+      code: data.code.present ? data.code.value : this.code,
+      oneTime: data.oneTime.present ? data.oneTime.value : this.oneTime,
+      usesLeft: data.usesLeft.present ? data.usesLeft.value : this.usesLeft,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      expiresAt: data.expiresAt.present ? data.expiresAt.value : this.expiresAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InviteCode(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('oneTime: $oneTime, ')
+          ..write('usesLeft: $usesLeft, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('expiresAt: $expiresAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, code, oneTime, usesLeft, createdAt, expiresAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InviteCode &&
+          other.id == this.id &&
+          other.code == this.code &&
+          other.oneTime == this.oneTime &&
+          other.usesLeft == this.usesLeft &&
+          other.createdAt == this.createdAt &&
+          other.expiresAt == this.expiresAt);
+}
+
+class InviteCodesCompanion extends UpdateCompanion<InviteCode> {
+  final Value<int> id;
+  final Value<String> code;
+  final Value<bool> oneTime;
+  final Value<int> usesLeft;
+  final Value<DateTime> createdAt;
+  final Value<DateTime?> expiresAt;
+  const InviteCodesCompanion({
+    this.id = const Value.absent(),
+    this.code = const Value.absent(),
+    this.oneTime = const Value.absent(),
+    this.usesLeft = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+  });
+  InviteCodesCompanion.insert({
+    this.id = const Value.absent(),
+    required String code,
+    this.oneTime = const Value.absent(),
+    this.usesLeft = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.expiresAt = const Value.absent(),
+  }) : code = Value(code);
+  static Insertable<InviteCode> custom({
+    Expression<int>? id,
+    Expression<String>? code,
+    Expression<bool>? oneTime,
+    Expression<int>? usesLeft,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? expiresAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (code != null) 'code': code,
+      if (oneTime != null) 'one_time': oneTime,
+      if (usesLeft != null) 'uses_left': usesLeft,
+      if (createdAt != null) 'created_at': createdAt,
+      if (expiresAt != null) 'expires_at': expiresAt,
+    });
+  }
+
+  InviteCodesCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? code,
+      Value<bool>? oneTime,
+      Value<int>? usesLeft,
+      Value<DateTime>? createdAt,
+      Value<DateTime?>? expiresAt}) {
+    return InviteCodesCompanion(
+      id: id ?? this.id,
+      code: code ?? this.code,
+      oneTime: oneTime ?? this.oneTime,
+      usesLeft: usesLeft ?? this.usesLeft,
+      createdAt: createdAt ?? this.createdAt,
+      expiresAt: expiresAt ?? this.expiresAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (code.present) {
+      map['code'] = Variable<String>(code.value);
+    }
+    if (oneTime.present) {
+      map['one_time'] = Variable<bool>(oneTime.value);
+    }
+    if (usesLeft.present) {
+      map['uses_left'] = Variable<int>(usesLeft.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (expiresAt.present) {
+      map['expires_at'] = Variable<DateTime>(expiresAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InviteCodesCompanion(')
+          ..write('id: $id, ')
+          ..write('code: $code, ')
+          ..write('oneTime: $oneTime, ')
+          ..write('usesLeft: $usesLeft, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('expiresAt: $expiresAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3161,6 +4068,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ProfileVersionsTable profileVersions =
       $ProfileVersionsTable(this);
   late final $NoticesTable notices = $NoticesTable(this);
+  late final $SettingsTable settings = $SettingsTable(this);
+  late final $PendingRegistrationsTable pendingRegistrations =
+      $PendingRegistrationsTable(this);
+  late final $InviteCodesTable inviteCodes = $InviteCodesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3173,7 +4084,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         timelineEntries,
         bookmarkChanges,
         profileVersions,
-        notices
+        notices,
+        settings,
+        pendingRegistrations,
+        inviteCodes
       ];
 }
 
@@ -3187,6 +4101,7 @@ typedef $$UsersTableCreateCompanionBuilder = UsersCompanion Function({
   Value<String?> phone,
   Value<String?> firstName,
   Value<String?> lastName,
+  Value<bool> blocked,
   Value<int> rowid,
 });
 typedef $$UsersTableUpdateCompanionBuilder = UsersCompanion Function({
@@ -3199,6 +4114,7 @@ typedef $$UsersTableUpdateCompanionBuilder = UsersCompanion Function({
   Value<String?> phone,
   Value<String?> firstName,
   Value<String?> lastName,
+  Value<bool> blocked,
   Value<int> rowid,
 });
 
@@ -3269,6 +4185,9 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
 
   ColumnFilters<String> get lastName => $composableBuilder(
       column: $table.lastName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get blocked => $composableBuilder(
+      column: $table.blocked, builder: (column) => ColumnFilters(column));
 
   Expression<bool> profilesRefs(
       Expression<bool> Function($$ProfilesTableFilterComposer f) f) {
@@ -3349,6 +4268,9 @@ class $$UsersTableOrderingComposer
 
   ColumnOrderings<String> get lastName => $composableBuilder(
       column: $table.lastName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get blocked => $composableBuilder(
+      column: $table.blocked, builder: (column) => ColumnOrderings(column));
 }
 
 class $$UsersTableAnnotationComposer
@@ -3386,6 +4308,9 @@ class $$UsersTableAnnotationComposer
 
   GeneratedColumn<String> get lastName =>
       $composableBuilder(column: $table.lastName, builder: (column) => column);
+
+  GeneratedColumn<bool> get blocked =>
+      $composableBuilder(column: $table.blocked, builder: (column) => column);
 
   Expression<T> profilesRefs<T extends Object>(
       Expression<T> Function($$ProfilesTableAnnotationComposer a) f) {
@@ -3462,6 +4387,7 @@ class $$UsersTableTableManager extends RootTableManager<
             Value<String?> phone = const Value.absent(),
             Value<String?> firstName = const Value.absent(),
             Value<String?> lastName = const Value.absent(),
+            Value<bool> blocked = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               UsersCompanion(
@@ -3474,6 +4400,7 @@ class $$UsersTableTableManager extends RootTableManager<
             phone: phone,
             firstName: firstName,
             lastName: lastName,
+            blocked: blocked,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3486,6 +4413,7 @@ class $$UsersTableTableManager extends RootTableManager<
             Value<String?> phone = const Value.absent(),
             Value<String?> firstName = const Value.absent(),
             Value<String?> lastName = const Value.absent(),
+            Value<bool> blocked = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               UsersCompanion.insert(
@@ -3498,6 +4426,7 @@ class $$UsersTableTableManager extends RootTableManager<
             phone: phone,
             firstName: firstName,
             lastName: lastName,
+            blocked: blocked,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -5862,6 +6791,490 @@ typedef $$NoticesTableProcessedTableManager = ProcessedTableManager<
     (Notice, BaseReferences<_$AppDatabase, $NoticesTable, Notice>),
     Notice,
     PrefetchHooks Function()>;
+typedef $$SettingsTableCreateCompanionBuilder = SettingsCompanion Function({
+  required String key,
+  required String value,
+  Value<int> rowid,
+});
+typedef $$SettingsTableUpdateCompanionBuilder = SettingsCompanion Function({
+  Value<String> key,
+  Value<String> value,
+  Value<int> rowid,
+});
+
+class $$SettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnFilters(column));
+}
+
+class $$SettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnOrderings(column));
+}
+
+class $$SettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SettingsTable> {
+  $$SettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$SettingsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $SettingsTable,
+    Setting,
+    $$SettingsTableFilterComposer,
+    $$SettingsTableOrderingComposer,
+    $$SettingsTableAnnotationComposer,
+    $$SettingsTableCreateCompanionBuilder,
+    $$SettingsTableUpdateCompanionBuilder,
+    (Setting, BaseReferences<_$AppDatabase, $SettingsTable, Setting>),
+    Setting,
+    PrefetchHooks Function()> {
+  $$SettingsTableTableManager(_$AppDatabase db, $SettingsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> key = const Value.absent(),
+            Value<String> value = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              SettingsCompanion(
+            key: key,
+            value: value,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String key,
+            required String value,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              SettingsCompanion.insert(
+            key: key,
+            value: value,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$SettingsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $SettingsTable,
+    Setting,
+    $$SettingsTableFilterComposer,
+    $$SettingsTableOrderingComposer,
+    $$SettingsTableAnnotationComposer,
+    $$SettingsTableCreateCompanionBuilder,
+    $$SettingsTableUpdateCompanionBuilder,
+    (Setting, BaseReferences<_$AppDatabase, $SettingsTable, Setting>),
+    Setting,
+    PrefetchHooks Function()>;
+typedef $$PendingRegistrationsTableCreateCompanionBuilder
+    = PendingRegistrationsCompanion Function({
+  Value<int> id,
+  required String telegramId,
+  required String phone,
+  Value<String?> firstName,
+  Value<String?> lastName,
+  Value<DateTime> createdAt,
+});
+typedef $$PendingRegistrationsTableUpdateCompanionBuilder
+    = PendingRegistrationsCompanion Function({
+  Value<int> id,
+  Value<String> telegramId,
+  Value<String> phone,
+  Value<String?> firstName,
+  Value<String?> lastName,
+  Value<DateTime> createdAt,
+});
+
+class $$PendingRegistrationsTableFilterComposer
+    extends Composer<_$AppDatabase, $PendingRegistrationsTable> {
+  $$PendingRegistrationsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get telegramId => $composableBuilder(
+      column: $table.telegramId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get phone => $composableBuilder(
+      column: $table.phone, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get firstName => $composableBuilder(
+      column: $table.firstName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastName => $composableBuilder(
+      column: $table.lastName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$PendingRegistrationsTableOrderingComposer
+    extends Composer<_$AppDatabase, $PendingRegistrationsTable> {
+  $$PendingRegistrationsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get telegramId => $composableBuilder(
+      column: $table.telegramId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get phone => $composableBuilder(
+      column: $table.phone, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get firstName => $composableBuilder(
+      column: $table.firstName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastName => $composableBuilder(
+      column: $table.lastName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$PendingRegistrationsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PendingRegistrationsTable> {
+  $$PendingRegistrationsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get telegramId => $composableBuilder(
+      column: $table.telegramId, builder: (column) => column);
+
+  GeneratedColumn<String> get phone =>
+      $composableBuilder(column: $table.phone, builder: (column) => column);
+
+  GeneratedColumn<String> get firstName =>
+      $composableBuilder(column: $table.firstName, builder: (column) => column);
+
+  GeneratedColumn<String> get lastName =>
+      $composableBuilder(column: $table.lastName, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$PendingRegistrationsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $PendingRegistrationsTable,
+    PendingRegistration,
+    $$PendingRegistrationsTableFilterComposer,
+    $$PendingRegistrationsTableOrderingComposer,
+    $$PendingRegistrationsTableAnnotationComposer,
+    $$PendingRegistrationsTableCreateCompanionBuilder,
+    $$PendingRegistrationsTableUpdateCompanionBuilder,
+    (
+      PendingRegistration,
+      BaseReferences<_$AppDatabase, $PendingRegistrationsTable,
+          PendingRegistration>
+    ),
+    PendingRegistration,
+    PrefetchHooks Function()> {
+  $$PendingRegistrationsTableTableManager(
+      _$AppDatabase db, $PendingRegistrationsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PendingRegistrationsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PendingRegistrationsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PendingRegistrationsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> telegramId = const Value.absent(),
+            Value<String> phone = const Value.absent(),
+            Value<String?> firstName = const Value.absent(),
+            Value<String?> lastName = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+          }) =>
+              PendingRegistrationsCompanion(
+            id: id,
+            telegramId: telegramId,
+            phone: phone,
+            firstName: firstName,
+            lastName: lastName,
+            createdAt: createdAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String telegramId,
+            required String phone,
+            Value<String?> firstName = const Value.absent(),
+            Value<String?> lastName = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+          }) =>
+              PendingRegistrationsCompanion.insert(
+            id: id,
+            telegramId: telegramId,
+            phone: phone,
+            firstName: firstName,
+            lastName: lastName,
+            createdAt: createdAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$PendingRegistrationsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $PendingRegistrationsTable,
+        PendingRegistration,
+        $$PendingRegistrationsTableFilterComposer,
+        $$PendingRegistrationsTableOrderingComposer,
+        $$PendingRegistrationsTableAnnotationComposer,
+        $$PendingRegistrationsTableCreateCompanionBuilder,
+        $$PendingRegistrationsTableUpdateCompanionBuilder,
+        (
+          PendingRegistration,
+          BaseReferences<_$AppDatabase, $PendingRegistrationsTable,
+              PendingRegistration>
+        ),
+        PendingRegistration,
+        PrefetchHooks Function()>;
+typedef $$InviteCodesTableCreateCompanionBuilder = InviteCodesCompanion
+    Function({
+  Value<int> id,
+  required String code,
+  Value<bool> oneTime,
+  Value<int> usesLeft,
+  Value<DateTime> createdAt,
+  Value<DateTime?> expiresAt,
+});
+typedef $$InviteCodesTableUpdateCompanionBuilder = InviteCodesCompanion
+    Function({
+  Value<int> id,
+  Value<String> code,
+  Value<bool> oneTime,
+  Value<int> usesLeft,
+  Value<DateTime> createdAt,
+  Value<DateTime?> expiresAt,
+});
+
+class $$InviteCodesTableFilterComposer
+    extends Composer<_$AppDatabase, $InviteCodesTable> {
+  $$InviteCodesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get oneTime => $composableBuilder(
+      column: $table.oneTime, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get usesLeft => $composableBuilder(
+      column: $table.usesLeft, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get expiresAt => $composableBuilder(
+      column: $table.expiresAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$InviteCodesTableOrderingComposer
+    extends Composer<_$AppDatabase, $InviteCodesTable> {
+  $$InviteCodesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get code => $composableBuilder(
+      column: $table.code, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get oneTime => $composableBuilder(
+      column: $table.oneTime, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get usesLeft => $composableBuilder(
+      column: $table.usesLeft, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get expiresAt => $composableBuilder(
+      column: $table.expiresAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$InviteCodesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $InviteCodesTable> {
+  $$InviteCodesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<bool> get oneTime =>
+      $composableBuilder(column: $table.oneTime, builder: (column) => column);
+
+  GeneratedColumn<int> get usesLeft =>
+      $composableBuilder(column: $table.usesLeft, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiresAt =>
+      $composableBuilder(column: $table.expiresAt, builder: (column) => column);
+}
+
+class $$InviteCodesTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $InviteCodesTable,
+    InviteCode,
+    $$InviteCodesTableFilterComposer,
+    $$InviteCodesTableOrderingComposer,
+    $$InviteCodesTableAnnotationComposer,
+    $$InviteCodesTableCreateCompanionBuilder,
+    $$InviteCodesTableUpdateCompanionBuilder,
+    (InviteCode, BaseReferences<_$AppDatabase, $InviteCodesTable, InviteCode>),
+    InviteCode,
+    PrefetchHooks Function()> {
+  $$InviteCodesTableTableManager(_$AppDatabase db, $InviteCodesTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$InviteCodesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$InviteCodesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$InviteCodesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> code = const Value.absent(),
+            Value<bool> oneTime = const Value.absent(),
+            Value<int> usesLeft = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> expiresAt = const Value.absent(),
+          }) =>
+              InviteCodesCompanion(
+            id: id,
+            code: code,
+            oneTime: oneTime,
+            usesLeft: usesLeft,
+            createdAt: createdAt,
+            expiresAt: expiresAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String code,
+            Value<bool> oneTime = const Value.absent(),
+            Value<int> usesLeft = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> expiresAt = const Value.absent(),
+          }) =>
+              InviteCodesCompanion.insert(
+            id: id,
+            code: code,
+            oneTime: oneTime,
+            usesLeft: usesLeft,
+            createdAt: createdAt,
+            expiresAt: expiresAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$InviteCodesTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $InviteCodesTable,
+    InviteCode,
+    $$InviteCodesTableFilterComposer,
+    $$InviteCodesTableOrderingComposer,
+    $$InviteCodesTableAnnotationComposer,
+    $$InviteCodesTableCreateCompanionBuilder,
+    $$InviteCodesTableUpdateCompanionBuilder,
+    (InviteCode, BaseReferences<_$AppDatabase, $InviteCodesTable, InviteCode>),
+    InviteCode,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5882,4 +7295,10 @@ class $AppDatabaseManager {
       $$ProfileVersionsTableTableManager(_db, _db.profileVersions);
   $$NoticesTableTableManager get notices =>
       $$NoticesTableTableManager(_db, _db.notices);
+  $$SettingsTableTableManager get settings =>
+      $$SettingsTableTableManager(_db, _db.settings);
+  $$PendingRegistrationsTableTableManager get pendingRegistrations =>
+      $$PendingRegistrationsTableTableManager(_db, _db.pendingRegistrations);
+  $$InviteCodesTableTableManager get inviteCodes =>
+      $$InviteCodesTableTableManager(_db, _db.inviteCodes);
 }
