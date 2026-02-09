@@ -25,6 +25,7 @@ class TranscodingSession {
   final DateTime startedAt;
   DateTime lastHeartbeat;
   Process? ffmpegProcess;
+  Process? subtitleProcess; // Separate process for subtitle extraction
   bool isReady = false;
   String? error;
 
@@ -234,8 +235,24 @@ class TranscodingService {
         print('[FFmpeg] $line');
       });
 
+      // Start separate subtitle extraction process if requested
+      if (session.subtitleIndex != null) {
+        final subArgs = _buildSubtitleArgs(session);
+        print('[Transcoding] Subtitle FFmpeg args: ${subArgs.join(' ')}');
+
+        session.subtitleProcess = await Process.start('ffmpeg', subArgs);
+
+        // Log subtitle process stderr
+        session.subtitleProcess!.stderr.transform(utf8.decoder).listen((line) {
+          print('[FFmpeg-Subs] $line');
+        });
+
+        print('[Transcoding] Subtitle extraction started (runs in background)');
+      }
+
       // Wait for first segment to be ready
       await _waitForPlaylist(session);
+
       session.isReady = true;
 
       print('[Transcoding] Session $streamId is ready');
@@ -266,17 +283,6 @@ class TranscodingService {
       // Audio: transcode to AAC for browser compatibility
       ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
 
-    // Extract subtitles if requested
-    if (session.subtitleIndex != null) {
-      args.addAll([
-        '-map',
-        '0:${session.subtitleIndex}',
-        '-c:s',
-        'webvtt',
-        session.subtitlesPath,
-      ]);
-    }
-
     // HLS output settings
     args
       ..addAll(['-f', 'hls'])
@@ -289,7 +295,26 @@ class TranscodingService {
       ..addAll(['-start_number', '0'])
       ..add(session.playlistPath);
 
+    // Note: Subtitles are extracted in a separate process
+    // to avoid buffering issues with streaming sources
+
     return args;
+  }
+
+  /// Build FFmpeg arguments for extracting subtitles
+  List<String> _buildSubtitleArgs(TranscodingSession session) {
+    return [
+      '-y',
+      '-i',
+      session.sourceUrl,
+      '-map',
+      '0:${session.subtitleIndex}',
+      '-c:s',
+      'webvtt',
+      '-flush_packets',
+      '1',
+      session.subtitlesPath,
+    ];
   }
 
   /// Wait for the playlist file to be created
@@ -341,6 +366,18 @@ class TranscodingService {
         const Duration(seconds: 5),
         onTimeout: () {
           session.ffmpegProcess!.kill(ProcessSignal.sigkill);
+          return -1;
+        },
+      );
+    }
+
+    // Kill subtitle extraction process
+    if (session.subtitleProcess != null) {
+      session.subtitleProcess!.kill();
+      await session.subtitleProcess!.exitCode.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          session.subtitleProcess!.kill(ProcessSignal.sigkill);
           return -1;
         },
       );
