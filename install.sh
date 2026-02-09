@@ -480,9 +480,28 @@ init_ssl() {
     if [ -f "$cert_path/fullchain.pem" ] && [ -f "$cert_path/privkey.pem" ]; then
         # Check if it's a real cert (not self-signed) by looking for renewal config
         if [ -f "$conf_dir/renewal/$INPUT_DOMAIN.conf" ]; then
-            info "Valid Let's Encrypt certificate found, skipping certificate setup"
-            ok "Using existing SSL certificates"
-            return
+            # Check if certificate is still valid (not expired and not expiring in 30 days)
+            local expiry_check
+            expiry_check=$(openssl x509 -checkend 2592000 -noout -in "$cert_path/fullchain.pem" 2>/dev/null && echo "valid" || echo "expiring")
+            
+            if [ "$expiry_check" = "valid" ]; then
+                # Verify certificate is for the correct domain
+                local cert_domain
+                cert_domain=$(openssl x509 -noout -subject -in "$cert_path/fullchain.pem" 2>/dev/null | grep -oP 'CN\s*=\s*\K[^,/]+' | head -1)
+                
+                if [ "$cert_domain" = "$INPUT_DOMAIN" ]; then
+                    info "Valid Let's Encrypt certificate found for $INPUT_DOMAIN"
+                    local expiry_date
+                    expiry_date=$(openssl x509 -noout -enddate -in "$cert_path/fullchain.pem" 2>/dev/null | cut -d= -f2)
+                    info "Certificate expires: $expiry_date"
+                    ok "Using existing SSL certificates"
+                    return
+                else
+                    info "Certificate is for '$cert_domain', but need '$INPUT_DOMAIN'. Will request new certificate."
+                fi
+            else
+                info "Certificate is expiring soon or expired. Will renew."
+            fi
         fi
     fi
 
@@ -498,9 +517,6 @@ init_ssl() {
             > "$data_path/letsencrypt/ssl-dhparams.pem"
     fi
 
-    # Create dummy certificate so nginx can start
-    info "Creating temporary self-signed certificate..."
-    local cert_path="$data_path/letsencrypt/live/$INPUT_DOMAIN"
     # Create dummy certificate so nginx can start
     info "Creating temporary self-signed certificate..."
     debug "Certificate path: $cert_path"
