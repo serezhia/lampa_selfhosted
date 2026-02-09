@@ -2650,7 +2650,7 @@ class TelegramBotService {
   }) async {
     final code = await DataSource.instance.createInviteCode(
       oneTime: oneTime,
-      usesLeft: oneTime ? 1 : 999999,
+      usesLeft: oneTime ? 1 : DataSource.unlimitedUsesCount,
     );
 
     final typeText = oneTime ? 'одноразовый' : 'многоразовый';

@@ -18,6 +18,12 @@ class DataSource {
 
   static final DataSource instance = DataSource._();
 
+  /// Количество использований для безлимитных инвайт-кодов
+  static const int unlimitedUsesCount = 999999;
+
+  /// Общий экземпляр Random.secure() для генерации кодов
+  static final Random _secureRandom = Random.secure();
+
   late final AppDatabase _db;
   late final TranscodingService _transcoding;
 
@@ -613,10 +619,9 @@ class DataSource {
     DateTime? expiresAt,
   }) {
     // Генерируем случайный код
-    final random = Random.secure();
     final code = List.generate(8, (_) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-      return chars[random.nextInt(chars.length)];
+      return chars[_secureRandom.nextInt(chars.length)];
     }).join();
 
     return _db.insertInviteCode(
