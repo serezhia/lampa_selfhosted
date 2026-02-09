@@ -8,7 +8,7 @@ Self-hosted media center based on [Lampa](https://github.com/yumata/lampa-source
 - `lampa-frontend` - Patched Lampa SPA (source/web/) served via nginx
 - `lampa-server` - Dart Frog backend (source/server/) with SQLite/Drift
 - `nginx` - Reverse proxy with optional Let's Encrypt
-- `jackett` - Torrent indexer proxy
+- `jacred` - Jackett-compatible torrent indexer aggregator
 - `torrserver` - Torrent streaming
 
 **Data flow:**

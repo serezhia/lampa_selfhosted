@@ -8,9 +8,9 @@ This directory contains all user data and is **not tracked by git** (except this
 data/
 ├── plugins/           # Custom user plugins (override builtin by same name)
 ├── nginx/             # Generated nginx config (conf.d/)
-├── jackett/
-│   ├── config/        # Jackett configuration and indexers
-│   └── downloads/     # Jackett downloads
+├── jacred/
+│   ├── config/        # Jacred configuration (init.conf)
+│   └── data/          # Jacred data and cache
 ├── database/          # SQLite database (lampa.db)
 ├── torrserver/
 │   ├── config/        # TorrServer configuration

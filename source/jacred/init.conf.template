@@ -1,0 +1,8 @@
+{
+  "listenip": "0.0.0.0",
+  "listenport": 9117,
+  "apikey": "{{JACRED_API_KEY}}",
+  "openstats": false,
+  "opensync": false,
+  "mergeduplicates": true
+}
