@@ -290,6 +290,12 @@ class TranscodingService {
       );
     }
 
+    // Trigger TorrServer preload before starting FFmpeg
+    // This helps buffer data ahead and reduces corrupt packet issues
+    if (sourceUrl.contains('/torrserver/')) {
+      await _triggerTorrServerPreload(sourceUrl, startSegment, session);
+    }
+
     // Build FFmpeg command starting from calculated segment
     final args = _buildFfmpegArgs(session, startSegment: startSegment);
     session.currentStartSegment = startSegment;
@@ -343,6 +349,54 @@ class TranscodingService {
     return session;
   }
 
+  /// Trigger TorrServer preload to buffer data before FFmpeg starts
+  Future<void> _triggerTorrServerPreload(
+    String sourceUrl,
+    int startSegment,
+    TranscodingSession session,
+  ) async {
+    try {
+      // Convert play URL to preload URL
+      var preloadUrl = sourceUrl.replaceAll('&play', '&preload');
+      if (!preloadUrl.contains('preload')) {
+        preloadUrl = sourceUrl.replaceAll('?play', '?preload');
+      }
+
+      // Add start position if seeking
+      if (startSegment > 0) {
+        final seekTime = startSegment * session.segmentDuration;
+        final separator = preloadUrl.contains('?') ? '&' : '?';
+        preloadUrl = '$preloadUrl${separator}start=${seekTime.toInt()}';
+      }
+
+      print('[Transcoding] Triggering TorrServer preload: $preloadUrl');
+
+      // Make a quick HEAD request to trigger preload
+      final uri = Uri.parse(preloadUrl);
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 5);
+
+      try {
+        final request = await client.headUrl(uri);
+        final response = await request.close().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () => throw TimeoutException('Preload timeout'),
+            );
+        await response.drain<void>();
+        print(
+            '[Transcoding] TorrServer preload triggered (${response.statusCode})');
+      } finally {
+        client.close();
+      }
+
+      // Give TorrServer a moment to start buffering
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+    } catch (e) {
+      // Preload failure is not critical - FFmpeg will still work
+      print('[Transcoding] TorrServer preload failed (non-critical): $e');
+    }
+  }
+
   /// Build FFmpeg arguments for HLS transcoding with optional seek
   List<String> _buildFfmpegArgs(
     TranscodingSession session, {
@@ -352,11 +406,21 @@ class TranscodingService {
 
     final args = <String>['-y'];
 
+    // Reconnect settings for HTTP streaming sources (TorrServer)
+    // These help handle network instability and torrent buffering
+    args.addAll([
+      '-reconnect', '1', // Enable reconnection
+      '-reconnect_streamed', '1', // Reconnect on streamed content
+      '-reconnect_delay_max', '5', // Max 5 seconds between reconnects
+      '-reconnect_on_network_error', '1', // Reconnect on network errors
+      '-reconnect_on_http_error', '5xx', // Reconnect on server errors
+    ]);
+
     // Error handling flags - ignore corrupt data from streaming sources
     args.addAll([
       '-err_detect', 'ignore_err', // Ignore input errors
       '-fflags',
-      '+discardcorrupt+genpts', // Discard corrupt packets, generate PTS
+      '+discardcorrupt+genpts+igndts', // Discard corrupt, generate PTS, ignore DTS
     ]);
 
     // Build source URL - add start parameter for TorrServer seeking
@@ -578,6 +642,15 @@ class TranscodingService {
           },
         );
         print('[Transcoding] Previous FFmpeg process killed');
+      }
+
+      // Trigger preload before restarting FFmpeg
+      if (session.sourceUrl.contains('/torrserver/')) {
+        await _triggerTorrServerPreload(
+          session.sourceUrl,
+          safeStartSegment,
+          session,
+        );
       }
 
       // Start new FFmpeg from safe segment position
