@@ -244,11 +244,13 @@ setup_repo() {
         # Already a git repo - just update
         info "Updating repository..."
         cd "$INSTALL_DIR"
-        debug "Running: git fetch origin"
-        git fetch origin
+        debug "Running: git fetch --all"
+        git fetch --all
+        debug "Running: git checkout $BRANCH"
+        git checkout "$BRANCH" 2>/dev/null || git checkout -b "$BRANCH" "origin/$BRANCH"
         debug "Running: git reset --hard origin/$BRANCH"
         git reset --hard "origin/$BRANCH"
-        ok "Repository updated"
+        ok "Repository updated (branch: $BRANCH)"
     elif [ -d "$INSTALL_DIR" ]; then
         # Directory exists but not a git repo
         # Preserve user data and initialize git
@@ -282,12 +284,15 @@ setup_repo() {
         # Exit the directory before removing it!
         cd /tmp
         
-        # Remove old directory and clone fresh
+        # Remove old directory and clone fresh (full clone for branch switching)
         debug "Removing old directory..."
         rm -rf "$INSTALL_DIR"
         
-        debug "Cloning repository..."
-        git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        debug "Cloning repository (full)..."
+        git clone "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+        debug "Checking out branch: $BRANCH"
+        git checkout "$BRANCH"
         
         # Restore preserved data
         info "Restoring preserved data..."
@@ -309,17 +314,18 @@ setup_repo() {
         # Cleanup backup
         rm -rf "$backup_dir"
         
-        cd "$INSTALL_DIR"
-        ok "Repository initialized with preserved data"
+        ok "Repository initialized with preserved data (branch: $BRANCH)"
     else
         # Fresh install
         info "Cloning repository..."
         debug "Creating directory: $INSTALL_DIR"
         mkdir -p "$INSTALL_DIR"
-        debug "Running: git clone --depth 1 --branch $BRANCH $REPO_URL $INSTALL_DIR"
-        git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        debug "Running: git clone $REPO_URL $INSTALL_DIR"
+        git clone "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
-        ok "Repository cloned"
+        debug "Checking out branch: $BRANCH"
+        git checkout "$BRANCH"
+        ok "Repository cloned (branch: $BRANCH)"
     fi
 }
 
