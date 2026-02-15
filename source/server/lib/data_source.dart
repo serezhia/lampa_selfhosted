@@ -544,9 +544,14 @@ class DataSource {
 
   /// Проверить, разрешён ли телефон для регистрации
   /// Возвращает false если список разрешённых номеров пуст (deny all)
+  /// ВНИМАНИЕ: если режим allowed_phones установлен, но список пуст — регистрация невозможна
   Future<bool> isPhoneAllowed(String phone) async {
     final allowedPhones = await getAllowedPhones();
-    if (allowedPhones.isEmpty) return false;
+    if (allowedPhones.isEmpty) {
+      print('[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration');
+      stdout.flush();
+      return false;
+    }
     final normalizedPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
     return allowedPhones.any(
       (allowed) => allowed.replaceAll(RegExp(r'[^\d]'), '') == normalizedPhone,
