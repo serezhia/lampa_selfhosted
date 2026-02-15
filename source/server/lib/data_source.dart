@@ -489,6 +489,13 @@ class DataSource {
   /// Получить всех пользователей
   Future<List<User>> getAllUsers() => _db.getAllUsers();
 
+  /// Получить пользователей с пагинацией
+  Future<(List<User>, int)> getUsersPage({
+    required int offset,
+    required int limit,
+  }) =>
+      _db.getUsersPage(offset: offset, limit: limit);
+
   /// Заблокировать пользователя
   Future<void> blockUser(String userId) => _db.blockUser(userId);
 
@@ -536,9 +543,10 @@ class DataSource {
   }
 
   /// Проверить, разрешён ли телефон для регистрации
+  /// Возвращает false если список разрешённых номеров пуст (deny all)
   Future<bool> isPhoneAllowed(String phone) async {
     final allowedPhones = await getAllowedPhones();
-    if (allowedPhones.isEmpty) return true;
+    if (allowedPhones.isEmpty) return false;
     final normalizedPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
     return allowedPhones.any(
       (allowed) => allowed.replaceAll(RegExp(r'[^\d]'), '') == normalizedPhone,
@@ -550,6 +558,13 @@ class DataSource {
   /// Получить все ожидающие регистрации
   Future<List<PendingRegistration>> getAllPendingRegistrations() =>
       _db.getAllPendingRegistrations();
+
+  /// Получить ожидающие регистрации с пагинацией
+  Future<(List<PendingRegistration>, int)> getPendingRegistrationsPage({
+    required int offset,
+    required int limit,
+  }) =>
+      _db.getPendingRegistrationsPage(offset: offset, limit: limit);
 
   /// Получить ожидающую регистрацию по ID
   Future<PendingRegistration?> getPendingRegistrationById(int id) =>

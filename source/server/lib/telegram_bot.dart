@@ -905,56 +905,82 @@ class TelegramBotService {
       }
       // ============= Admin Users callbacks =============
       else if (data == 'admin_users') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _showUsersList(ctx, messageId: messageId, edit: true);
       } else if (data.startsWith('admin_users_page_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final page = int.tryParse(data.substring(17)) ?? 0;
         await _showUsersList(ctx, messageId: messageId, edit: true, page: page);
       } else if (data.startsWith('admin_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final userId = data.substring(11);
         await _showUserInfo(ctx, userId, messageId!);
       } else if (data.startsWith('admin_block_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final userId = data.substring(17);
         await _blockUser(ctx, userId, messageId!);
       } else if (data.startsWith('admin_unblock_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final userId = data.substring(19);
         await _unblockUser(ctx, userId, messageId!);
       } else if (data.startsWith('admin_delete_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final userId = data.substring(18);
         await _deleteUserConfirm(ctx, userId, messageId!);
       } else if (data.startsWith('confirm_delete_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final userId = data.substring(20);
         await _confirmDeleteUser(ctx, userId, messageId!);
       }
       // ============= Admin Registration callbacks =============
       else if (data == 'admin_registration') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
       } else if (data.startsWith('set_reg_mode_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final mode = data.substring(13);
         await _setRegistrationMode(ctx, mode, messageId!);
       } else if (data == 'admin_pending_registrations') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+      } else if (data.startsWith('admin_pending_page_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final page = int.tryParse(data.substring(19)) ?? 0;
+        await _showPendingRegistrations(
+          ctx,
+          messageId: messageId,
+          edit: true,
+          page: page,
+        );
       } else if (data.startsWith('approve_registration_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final pendingId = int.tryParse(data.substring(21));
         if (pendingId != null) {
           await _approveRegistration(ctx, pendingId, messageId!);
         }
       } else if (data.startsWith('reject_registration_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final pendingId = int.tryParse(data.substring(20));
         if (pendingId != null) {
           await _rejectRegistration(ctx, pendingId, messageId!);
         }
       } else if (data == 'admin_invite_codes') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _showInviteCodes(ctx, messageId: messageId, edit: true);
       } else if (data == 'create_invite_code_onetime') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _createInviteCode(ctx, oneTime: true, messageId: messageId);
       } else if (data == 'create_invite_code_unlimited') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _createInviteCode(ctx, oneTime: false, messageId: messageId);
       } else if (data.startsWith('delete_invite_code_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
         final codeId = int.tryParse(data.substring(19));
         if (codeId != null) {
           await _deleteInviteCode(ctx, codeId, messageId!);
         }
       } else if (data == 'admin_allowed_phones') {
+        if (!(await _checkAdminAccess(ctx))) return;
         await _showAllowedPhonesPrompt(ctx, messageId!);
       } else {
         _log('Unknown callback data: $data');
@@ -2161,6 +2187,24 @@ class TelegramBotService {
   /// Количество пользователей на странице
   static const int _usersPerPage = 8;
 
+  /// Количество ожидающих регистраций на странице
+  static const int _pendingPerPage = 5;
+
+  /// Проверить, является ли пользователь админом и показать сообщение если нет
+  Future<bool> _checkAdminAccess(Context ctx) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final isAdmin = await DataSource.instance.isAdmin(telegramUserId);
+    if (!isAdmin) {
+      try {
+        await ctx.api.sendMessage(
+          ChatID(ctx.chat!.id),
+          '⛔ У вас нет прав администратора для выполнения этого действия.',
+        );
+      } catch (_) {}
+    }
+    return isAdmin;
+  }
+
   /// Показать список пользователей с пагинацией
   Future<void> _showUsersList(
     Context ctx, {
@@ -2168,11 +2212,15 @@ class TelegramBotService {
     bool edit = false,
     int page = 0,
   }) async {
-    final users = await DataSource.instance.getAllUsers();
+    final offset = page * _usersPerPage;
+    final (users, totalCount) = await DataSource.instance.getUsersPage(
+      offset: offset,
+      limit: _usersPerPage,
+    );
 
     var keyboard = InlineKeyboard();
 
-    if (users.isEmpty) {
+    if (totalCount == 0) {
       keyboard = keyboard.add('« Назад', 'admin_menu');
 
       const text = '👥 *Пользователи*\n\nПользователей пока нет.';
@@ -2195,12 +2243,17 @@ class TelegramBotService {
       return;
     }
 
-    final totalPages = (users.length / _usersPerPage).ceil();
-    final startIndex = page * _usersPerPage;
-    final endIndex = (startIndex + _usersPerPage).clamp(0, users.length);
-    final pageUsers = users.sublist(startIndex, endIndex);
+    final totalPages = (totalCount / _usersPerPage).ceil();
+    
+    // Проверяем корректность страницы
+    final validPage = page.clamp(0, totalPages - 1);
+    if (validPage != page) {
+      // Рекурсивно вызываем с корректной страницей
+      await _showUsersList(ctx, messageId: messageId, edit: edit, page: validPage);
+      return;
+    }
 
-    for (final user in pageUsers) {
+    for (final user in users) {
       final blocked = user.blocked ? '🚫 ' : '';
       final name = user.firstName ?? user.phone ?? user.id;
       final shortName = name.length > 20 ? '${name.substring(0, 17)}...' : name;
@@ -2222,7 +2275,7 @@ class TelegramBotService {
 
     keyboard = keyboard.add('« Назад', 'admin_menu');
 
-    final text = '👥 *Пользователи* (${users.length})\n'
+    final text = '👥 *Пользователи* ($totalCount)\n'
         '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n'
         '🚫 — заблокирован\n\n'
         'Выберите пользователя:';
@@ -2494,17 +2547,23 @@ class TelegramBotService {
     await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
   }
 
-  /// Показать список ожидающих регистраций
+  /// Показать список ожидающих регистраций с пагинацией
   Future<void> _showPendingRegistrations(
     Context ctx, {
     int? messageId,
     bool edit = false,
+    int page = 0,
   }) async {
-    final pending = await DataSource.instance.getAllPendingRegistrations();
+    final offset = page * _pendingPerPage;
+    final (pending, totalCount) =
+        await DataSource.instance.getPendingRegistrationsPage(
+      offset: offset,
+      limit: _pendingPerPage,
+    );
 
     var keyboard = InlineKeyboard();
 
-    if (pending.isEmpty) {
+    if (totalCount == 0) {
       keyboard = keyboard.add('« Назад', 'admin_registration');
 
       const text = '📝 *Заявки на регистрацию*\n\nЗаявок пока нет.';
@@ -2527,9 +2586,24 @@ class TelegramBotService {
       return;
     }
 
-    var text = '📝 *Заявки на регистрацию* (${pending.length})\n\n';
+    final totalPages = (totalCount / _pendingPerPage).ceil();
 
-    for (final reg in pending.take(5)) {
+    // Проверяем корректность страницы
+    final validPage = page.clamp(0, totalPages - 1);
+    if (validPage != page) {
+      await _showPendingRegistrations(
+        ctx,
+        messageId: messageId,
+        edit: edit,
+        page: validPage,
+      );
+      return;
+    }
+
+    var text = '📝 *Заявки на регистрацию* ($totalCount)\n'
+        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n';
+
+    for (final reg in pending) {
       final name = [reg.firstName, reg.lastName]
           .where((s) => s != null && s.isNotEmpty)
           .join(' ');
@@ -2543,6 +2617,19 @@ class TelegramBotService {
           .add('✅', 'approve_registration_${reg.id}')
           .add('❌', 'reject_registration_${reg.id}')
           .row();
+    }
+
+    // Кнопки пагинации
+    if (totalPages > 1) {
+      if (page > 0) {
+        keyboard =
+            keyboard.add('⬅️ Назад', 'admin_pending_page_${page - 1}');
+      }
+      if (page < totalPages - 1) {
+        keyboard =
+            keyboard.add('➡️ Далее', 'admin_pending_page_${page + 1}');
+      }
+      keyboard = keyboard.row();
     }
 
     keyboard = keyboard.add('« Назад', 'admin_registration');

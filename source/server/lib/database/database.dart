@@ -223,6 +223,18 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<User>> getAllUsers() => select(users).get();
 
+  /// Получить пользователей с пагинацией
+  Future<(List<User>, int)> getUsersPage({
+    required int offset,
+    required int limit,
+  }) async {
+    final count = await (selectOnly(users)..addColumns([countAll()])).getSingle();
+    final totalCount = count.read(countAll()) ?? 0;
+    
+    final userList = await (select(users)..limit(limit, offset: offset)).get();
+    return (userList, totalCount);
+  }
+
   Future<User> insertUser(UsersCompanion user) async {
     await into(users).insert(user);
     return (await getUserById(user.id.value))!;
@@ -468,6 +480,23 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(p) => OrderingTerm.desc(p.createdAt)]))
           .get();
 
+  /// Получить ожидающие регистрации с пагинацией
+  Future<(List<PendingRegistration>, int)> getPendingRegistrationsPage({
+    required int offset,
+    required int limit,
+  }) async {
+    final count = await (selectOnly(pendingRegistrations)
+          ..addColumns([countAll()]))
+        .getSingle();
+    final totalCount = count.read(countAll()) ?? 0;
+
+    final list = await (select(pendingRegistrations)
+          ..orderBy([(p) => OrderingTerm.desc(p.createdAt)])
+          ..limit(limit, offset: offset))
+        .get();
+    return (list, totalCount);
+  }
+
   Future<PendingRegistration?> getPendingRegistrationById(int id) =>
       (select(pendingRegistrations)..where((p) => p.id.equals(id)))
           .getSingleOrNull();
@@ -551,34 +580,36 @@ class AppDatabase extends _$AppDatabase {
         .write(const UsersCompanion(blocked: Value(false)));
   }
 
-  /// Удаление пользователя и всех связанных данных
+  /// Удаление пользователя и всех связанных данных (атомарно)
   Future<void> deleteUserWithData(String userId) async {
-    // Получаем все профили пользователя
-    final userProfiles = await getProfilesByUserId(userId);
+    await transaction(() async {
+      // Получаем все профили пользователя
+      final userProfiles = await getProfilesByUserId(userId);
 
-    // Для каждого профиля удаляем связанные данные
-    for (final profile in userProfiles) {
-      await (delete(bookmarks)..where((b) => b.profileId.equals(profile.id)))
-          .go();
-      await (delete(timelineEntries)
-            ..where((t) => t.profileId.equals(profile.id)))
-          .go();
-      await (delete(bookmarkChanges)
-            ..where((c) => c.profileId.equals(profile.id)))
-          .go();
-      await (delete(profileVersions)
-            ..where((v) => v.profileId.equals(profile.id)))
-          .go();
-    }
+      // Для каждого профиля удаляем связанные данные
+      for (final profile in userProfiles) {
+        await (delete(bookmarks)..where((b) => b.profileId.equals(profile.id)))
+            .go();
+        await (delete(timelineEntries)
+              ..where((t) => t.profileId.equals(profile.id)))
+            .go();
+        await (delete(bookmarkChanges)
+              ..where((c) => c.profileId.equals(profile.id)))
+            .go();
+        await (delete(profileVersions)
+              ..where((v) => v.profileId.equals(profile.id)))
+            .go();
+      }
 
-    // Удаляем профили
-    await (delete(profiles)..where((p) => p.userId.equals(userId))).go();
+      // Удаляем профили
+      await (delete(profiles)..where((p) => p.userId.equals(userId))).go();
 
-    // Удаляем устройства
-    await (delete(devices)..where((d) => d.userId.equals(userId))).go();
+      // Удаляем устройства
+      await (delete(devices)..where((d) => d.userId.equals(userId))).go();
 
-    // Удаляем пользователя
-    await (delete(users)..where((u) => u.id.equals(userId))).go();
+      // Удаляем пользователя
+      await (delete(users)..where((u) => u.id.equals(userId))).go();
+    });
   }
 }
 
