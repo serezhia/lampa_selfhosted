@@ -69,6 +69,11 @@ Handler middleware(Handler handler) {
         return Response(statusCode: 401, body: 'Unauthorized: User not found');
       }
 
+      // Check if user is blocked
+      if (user.blocked) {
+        return Response(statusCode: 403, body: 'Forbidden: User is blocked');
+      }
+
       // Check for profile header
       final profileIdStr = context.request.headers['profile'];
       db.Profile? profile;

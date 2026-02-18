@@ -140,9 +140,19 @@ class TelegramBotService {
       // Проверяем, зарегистрирован ли пользователь
       if (await DataSource.instance.isUserRegistered(telegramUserId)) {
         _log('User is registered, showing main menu');
-        // Пользователь уже зарегистрирован - показываем главное меню
+        // Проверяем, заблокирован ли пользователь
         final user =
             await DataSource.instance.findUserByTelegramId(telegramUserId);
+        if (user?.blocked ?? false) {
+          await ctx.reply(
+            '🚫 *Ваш аккаунт заблокирован*\n\n'
+            'Обратитесь к администратору для разблокировки.',
+            parseMode: ParseMode.markdown,
+          );
+          return;
+        }
+
+        // Пользователь уже зарегистрирован - показываем главное меню
         final greeting = user?.firstName != null
             ? 'Привет, *${user!.firstName}*!'
             : 'С возвращением!';
@@ -155,6 +165,19 @@ class TelegramBotService {
           replyMarkup: keyboard,
         );
       } else {
+        // Проверяем, есть ли ожидающая заявка на регистрацию
+        final pending = await DataSource.instance
+            .getPendingRegistrationByTelegramId(telegramUserId);
+        if (pending != null) {
+          await ctx.reply(
+            '⏳ *Ожидание одобрения*\n\n'
+            'Ваша заявка на регистрацию ожидает одобрения администратора.\n'
+            'Вы получите уведомление после рассмотрения.',
+            parseMode: ParseMode.markdown,
+          );
+          return;
+        }
+
         _log('User not registered, requesting contact');
         // Новый пользователь - запрашиваем контакт
         await ctx.reply(
@@ -200,12 +223,93 @@ class TelegramBotService {
       return;
     }
 
+    // Проверяем режим регистрации
+    final registrationMode = await DataSource.instance.getRegistrationMode();
+    _log('Registration mode: $registrationMode');
+
+    if (registrationMode == 'approval') {
+      // Режим одобрения админом
+      await DataSource.instance.createPendingRegistration(
+        telegramId: telegramUserId,
+        phone: phone,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+      );
+
+      await ctx.reply(
+        '⏳ *Заявка отправлена!*\n\n'
+        'Ваша заявка на регистрацию отправлена администратору.\n'
+        'Вы получите уведомление после одобрения.',
+        parseMode: ParseMode.markdown,
+        replyMarkup: Keyboard.remove(),
+      );
+
+      // Уведомляем админов о новой заявке
+      await _notifyAdminsNewPendingRegistration(
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        phone: phone,
+      );
+      return;
+    }
+
+    if (registrationMode == 'allowed_phones') {
+      // Режим разрешённых номеров
+      final isAllowed = await DataSource.instance.isPhoneAllowed(phone);
+      if (!isAllowed) {
+        await ctx.reply(
+          '❌ *Регистрация недоступна*\n\n'
+          'Ваш номер телефона не в списке разрешённых.\n'
+          'Обратитесь к администратору.',
+          parseMode: ParseMode.markdown,
+          replyMarkup: Keyboard.remove(),
+        );
+        return;
+      }
+    }
+
+    if (registrationMode == 'invite_code') {
+      // Режим инвайт-кода - запрашиваем код
+      DataSource.instance.setPendingNoticeCreation(telegramUserId, {
+        'step': 'invite_code',
+        'phone': phone,
+        'firstName': contact.firstName,
+        'lastName': contact.lastName,
+      });
+
+      await ctx.reply(
+        '🔐 *Требуется инвайт-код*\n\n'
+        'Для регистрации введите инвайт-код:',
+        parseMode: ParseMode.markdown,
+        replyMarkup: Keyboard.remove(),
+      );
+      return;
+    }
+
+    // Свободная регистрация (free) или прошли проверку allowed_phones
+    await _completeRegistration(
+      ctx,
+      telegramUserId: telegramUserId,
+      phone: phone,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+    );
+  }
+
+  /// Завершить регистрацию пользователя
+  Future<void> _completeRegistration(
+    Context ctx, {
+    required String telegramUserId,
+    required String phone,
+    String? firstName,
+    String? lastName,
+  }) async {
     // Регистрируем пользователя
     final user = await DataSource.instance.createUserFromContact(
       telegramId: telegramUserId,
       phone: phone,
-      firstName: contact.firstName,
-      lastName: contact.lastName,
+      firstName: firstName,
+      lastName: lastName,
     );
 
     final greeting = user.firstName ?? 'друг';
@@ -227,6 +331,78 @@ class TelegramBotService {
       parseMode: ParseMode.markdown,
       replyMarkup: _mainMenuKeyboard(),
     );
+
+    // Уведомляем админов о новой регистрации
+    await _notifyAdminsNewRegistration(user);
+  }
+
+  /// Уведомить админов о новой регистрации
+  Future<void> _notifyAdminsNewRegistration(User user) async {
+    try {
+      final adminIds = await DataSource.instance.getAdminTelegramIds();
+      if (adminIds.isEmpty) return;
+
+      final name = [user.firstName, user.lastName]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' ');
+
+      final text = '👤 *Новый пользователь зарегистрирован*\n\n'
+          '${name.isNotEmpty ? '👋 Имя: *${_escapeMarkdown(name)}*\n' : ''}'
+          '📱 Телефон: `${user.phone ?? "не указан"}`\n'
+          '📅 Дата: ${_formatDate(user.createdAt)}';
+
+      for (final adminId in adminIds) {
+        try {
+          await _bot?.api.sendMessage(
+            ChatID(int.parse(adminId)),
+            text,
+            parseMode: ParseMode.markdown,
+          );
+        } catch (e) {
+          _log('Failed to notify admin $adminId: $e');
+        }
+      }
+    } catch (e) {
+      _log('Error notifying admins: $e');
+    }
+  }
+
+  /// Уведомить админов о новой заявке на регистрацию
+  Future<void> _notifyAdminsNewPendingRegistration({
+    String? firstName,
+    String? lastName,
+    required String phone,
+  }) async {
+    try {
+      final adminIds = await DataSource.instance.getAdminTelegramIds();
+      if (adminIds.isEmpty) return;
+
+      final name = [firstName, lastName]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' ');
+
+      final keyboard = InlineKeyboard()
+          .add('📋 Посмотреть заявки', 'admin_pending_registrations');
+
+      final text = '📝 *Новая заявка на регистрацию*\n\n'
+          '${name.isNotEmpty ? '👋 Имя: *${_escapeMarkdown(name)}*\n' : ''}'
+          '📱 Телефон: `$phone`';
+
+      for (final adminId in adminIds) {
+        try {
+          await _bot?.api.sendMessage(
+            ChatID(int.parse(adminId)),
+            text,
+            parseMode: ParseMode.markdown,
+            replyMarkup: keyboard,
+          );
+        } catch (e) {
+          _log('Failed to notify admin $adminId: $e');
+        }
+      }
+    } catch (e) {
+      _log('Error notifying admins: $e');
+    }
   }
 
   /// /profile - профиль пользователя
@@ -291,6 +467,10 @@ class TelegramBotService {
     bool edit = false,
   }) async {
     final keyboard = InlineKeyboard()
+        .add('👥 Пользователи', 'admin_users')
+        .row()
+        .add('🔐 Регистрация', 'admin_registration')
+        .row()
         .add('📢 Уведомления', 'admin_notices')
         .row()
         .add('« Главное меню', 'main_menu');
@@ -523,6 +703,19 @@ class TelegramBotService {
         return;
       }
 
+      // Проверяем блокировку пользователя
+      final currentUser =
+          await DataSource.instance.findUserByTelegramId(telegramUserId);
+      if (currentUser?.blocked ?? false) {
+        await ctx.api.sendMessage(
+          ChatID(ctx.chat!.id),
+          '🚫 *Ваш аккаунт заблокирован*\n\n'
+          'Обратитесь к администратору для разблокировки.',
+          parseMode: ParseMode.markdown,
+        );
+        return;
+      }
+
       if (data == 'main_menu') {
         // Очищаем состояния
         DataSource.instance.clearAllPendingStates(telegramUserId);
@@ -709,6 +902,86 @@ class TelegramBotService {
           pending['image'] = null;
           await _createNoticeFromPending(ctx, telegramUserId, pending);
         }
+      }
+      // ============= Admin Users callbacks =============
+      else if (data == 'admin_users') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _showUsersList(ctx, messageId: messageId, edit: true);
+      } else if (data.startsWith('admin_users_page_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final page = int.tryParse(data.substring(17)) ?? 0;
+        await _showUsersList(ctx, messageId: messageId, edit: true, page: page);
+      } else if (data.startsWith('admin_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final userId = data.substring(11);
+        await _showUserInfo(ctx, userId, messageId!);
+      } else if (data.startsWith('admin_block_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final userId = data.substring(17);
+        await _blockUser(ctx, userId, messageId!);
+      } else if (data.startsWith('admin_unblock_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final userId = data.substring(19);
+        await _unblockUser(ctx, userId, messageId!);
+      } else if (data.startsWith('admin_delete_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final userId = data.substring(18);
+        await _deleteUserConfirm(ctx, userId, messageId!);
+      } else if (data.startsWith('confirm_delete_user_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final userId = data.substring(20);
+        await _confirmDeleteUser(ctx, userId, messageId!);
+      }
+      // ============= Admin Registration callbacks =============
+      else if (data == 'admin_registration') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
+      } else if (data.startsWith('set_reg_mode_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final mode = data.substring(13);
+        await _setRegistrationMode(ctx, mode, messageId!);
+      } else if (data == 'admin_pending_registrations') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+      } else if (data.startsWith('admin_pending_page_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final page = int.tryParse(data.substring(19)) ?? 0;
+        await _showPendingRegistrations(
+          ctx,
+          messageId: messageId,
+          edit: true,
+          page: page,
+        );
+      } else if (data.startsWith('approve_registration_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final pendingId = int.tryParse(data.substring(21));
+        if (pendingId != null) {
+          await _approveRegistration(ctx, pendingId, messageId!);
+        }
+      } else if (data.startsWith('reject_registration_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final pendingId = int.tryParse(data.substring(20));
+        if (pendingId != null) {
+          await _rejectRegistration(ctx, pendingId, messageId!);
+        }
+      } else if (data == 'admin_invite_codes') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _showInviteCodes(ctx, messageId: messageId, edit: true);
+      } else if (data == 'create_invite_code_onetime') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _createInviteCode(ctx, oneTime: true, messageId: messageId);
+      } else if (data == 'create_invite_code_unlimited') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _createInviteCode(ctx, oneTime: false, messageId: messageId);
+      } else if (data.startsWith('delete_invite_code_')) {
+        if (!(await _checkAdminAccess(ctx))) return;
+        final codeId = int.tryParse(data.substring(19));
+        if (codeId != null) {
+          await _deleteInviteCode(ctx, codeId, messageId!);
+        }
+      } else if (data == 'admin_allowed_phones') {
+        if (!(await _checkAdminAccess(ctx))) return;
+        await _showAllowedPhonesPrompt(ctx, messageId!);
       } else {
         _log('Unknown callback data: $data');
       }
@@ -1045,6 +1318,51 @@ class TelegramBotService {
         // Сохраняем изображение и создаём уведомление
         pendingNotice['image'] = inputText;
         await _createNoticeFromPending(ctx, telegramUserId, pendingNotice);
+        return;
+      } else if (step == 'invite_code') {
+        // Проверяем и используем инвайт-код атомарно
+        final code = inputText.toUpperCase().trim();
+        final codeUsed = await DataSource.instance.useInviteCode(code);
+
+        if (!codeUsed) {
+          await ctx.reply(
+            '❌ *Неверный или истёкший код*\n\n'
+            'Попробуйте ещё раз или обратитесь к администратору.',
+            parseMode: ParseMode.markdown,
+          );
+          return;
+        }
+
+        DataSource.instance.clearPendingNoticeCreation(telegramUserId);
+
+        // Завершаем регистрацию
+        await _completeRegistration(
+          ctx,
+          telegramUserId: telegramUserId,
+          phone: pendingNotice['phone'] as String,
+          firstName: pendingNotice['firstName'] as String?,
+          lastName: pendingNotice['lastName'] as String?,
+        );
+        return;
+      } else if (step == 'allowed_phones') {
+        // Сохраняем список разрешённых телефонов
+        final phones = inputText
+            .split(RegExp(r'[,\n]'))
+            .map((p) => p.trim())
+            .where((p) => p.isNotEmpty)
+            .toList();
+
+        await DataSource.instance.setAllowedPhones(phones);
+        DataSource.instance.clearPendingNoticeCreation(telegramUserId);
+
+        final keyboard = InlineKeyboard()
+            .add('« Настройки регистрации', 'admin_registration');
+
+        await ctx.reply(
+          '✅ Список разрешённых телефонов обновлён\n\n'
+          'Добавлено номеров: ${phones.length}',
+          replyMarkup: keyboard,
+        );
         return;
       } else if (step != null && step.startsWith('edit_')) {
         // Редактирование существующего уведомления
@@ -1862,5 +2180,670 @@ class TelegramBotService {
     return '${date.day.toString().padLeft(2, '0')}.'
         '${date.month.toString().padLeft(2, '0')}.'
         '${date.year}';
+  }
+
+  // ============= Методы управления пользователями (Admin) =============
+
+  /// Количество пользователей на странице
+  static const int _usersPerPage = 8;
+
+  /// Количество ожидающих регистраций на странице
+  static const int _pendingPerPage = 5;
+
+  /// Проверить, является ли пользователь админом и показать сообщение если нет
+  Future<bool> _checkAdminAccess(Context ctx) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final isAdmin = await DataSource.instance.isAdmin(telegramUserId);
+    if (!isAdmin) {
+      try {
+        await ctx.api.sendMessage(
+          ChatID(ctx.chat!.id),
+          '⛔ У вас нет прав администратора для выполнения этого действия.',
+        );
+      } catch (_) {}
+    }
+    return isAdmin;
+  }
+
+  /// Показать список пользователей с пагинацией
+  Future<void> _showUsersList(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+    int page = 0,
+  }) async {
+    final offset = page * _usersPerPage;
+    final (users, totalCount) = await DataSource.instance.getUsersPage(
+      offset: offset,
+      limit: _usersPerPage,
+    );
+
+    var keyboard = InlineKeyboard();
+
+    if (totalCount == 0) {
+      keyboard = keyboard.add('« Назад', 'admin_menu');
+
+      const text = '👥 *Пользователи*\n\nПользователей пока нет.';
+
+      if (edit && messageId != null) {
+        await ctx.api.editMessageText(
+          ChatID(ctx.chat!.id),
+          messageId,
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      } else {
+        await ctx.reply(
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      }
+      return;
+    }
+
+    final totalPages = (totalCount / _usersPerPage).ceil();
+    
+    // Проверяем корректность страницы
+    final validPage = page.clamp(0, totalPages - 1);
+    if (validPage != page) {
+      // Рекурсивно вызываем с корректной страницей
+      await _showUsersList(ctx, messageId: messageId, edit: edit, page: validPage);
+      return;
+    }
+
+    for (final user in users) {
+      final blocked = user.blocked ? '🚫 ' : '';
+      final name = user.firstName ?? user.phone ?? user.id;
+      final shortName = name.length > 20 ? '${name.substring(0, 17)}...' : name;
+      // Используем полный user.id для избежания коллизий
+      keyboard =
+          keyboard.add('$blocked$shortName', 'admin_user_${user.id}').row();
+    }
+
+    // Кнопки пагинации
+    if (totalPages > 1) {
+      if (page > 0) {
+        keyboard = keyboard.add('⬅️ Назад', 'admin_users_page_${page - 1}');
+      }
+      if (page < totalPages - 1) {
+        keyboard = keyboard.add('➡️ Далее', 'admin_users_page_${page + 1}');
+      }
+      keyboard = keyboard.row();
+    }
+
+    keyboard = keyboard.add('« Назад', 'admin_menu');
+
+    final text = '👥 *Пользователи* ($totalCount)\n'
+        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n'
+        '🚫 — заблокирован\n\n'
+        'Выберите пользователя:';
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Показать информацию о пользователе
+  Future<void> _showUserInfo(
+    Context ctx,
+    String userId,
+    int messageId,
+  ) async {
+    final user = await DataSource.instance.getUserById(userId);
+
+    if (user == null) {
+      final keyboard = InlineKeyboard().add('« Назад', 'admin_users');
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        '❌ Пользователь не найден',
+        replyMarkup: keyboard,
+      );
+      return;
+    }
+
+    final devices = await DataSource.instance.getUserDevices(user.id);
+    final profiles = await DataSource.instance.getProfilesForUser(user.id);
+
+    final name = [user.firstName, user.lastName]
+        .where((s) => s != null && s.isNotEmpty)
+        .join(' ');
+
+    final blockedText = user.blocked ? '\n🚫 *ЗАБЛОКИРОВАН*' : '';
+
+    var keyboard = InlineKeyboard();
+
+    if (user.blocked) {
+      keyboard = keyboard.add('✅ Разблокировать', 'admin_unblock_user_${user.id}');
+    } else {
+      keyboard = keyboard.add('🚫 Заблокировать', 'admin_block_user_${user.id}');
+    }
+
+    keyboard = keyboard
+        .row()
+        .add('🗑 Удалить', 'admin_delete_user_${user.id}')
+        .row()
+        .add('« Назад', 'admin_users');
+
+    final text = '👤 *Пользователь*$blockedText\n\n'
+        '${name.isNotEmpty ? '👋 Имя: *${_escapeMarkdown(name)}*\n' : ''}'
+        '📧 Email: `${user.email}`\n'
+        '📱 Телефон: `${user.phone ?? "не указан"}`\n'
+        '📅 Зарегистрирован: ${_formatDate(user.createdAt)}\n\n'
+        '📊 *Статистика:*\n'
+        '• Устройств: ${devices.length}\n'
+        '• Профилей: ${profiles.length}';
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      text,
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  /// Заблокировать пользователя
+  Future<void> _blockUser(Context ctx, String userId, int messageId) async {
+    final user = await DataSource.instance.getUserById(userId);
+
+    if (user == null) {
+      await _showUsersList(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    await DataSource.instance.blockUser(user.id);
+    await _showUserInfo(ctx, userId, messageId);
+  }
+
+  /// Разблокировать пользователя
+  Future<void> _unblockUser(Context ctx, String userId, int messageId) async {
+    final user = await DataSource.instance.getUserById(userId);
+
+    if (user == null) {
+      await _showUsersList(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    await DataSource.instance.unblockUser(user.id);
+    await _showUserInfo(ctx, userId, messageId);
+  }
+
+  /// Запрос подтверждения удаления пользователя
+  Future<void> _deleteUserConfirm(
+    Context ctx,
+    String userId,
+    int messageId,
+  ) async {
+    final user = await DataSource.instance.getUserById(userId);
+
+    if (user == null) {
+      await _showUsersList(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    final name = user.firstName ?? user.phone ?? user.id;
+
+    final keyboard = InlineKeyboard()
+        .add('✅ Да, удалить', 'confirm_delete_user_${user.id}')
+        .row()
+        .add('❌ Отмена', 'admin_user_${user.id}');
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      '⚠️ *Удалить пользователя?*\n\n'
+      '👤 ${_escapeMarkdown(name)}\n\n'
+      '❗ Будут удалены все данные пользователя:\n'
+      '• Профили и закладки\n'
+      '• История просмотров\n'
+      '• Устройства\n\n'
+      'Это действие нельзя отменить.',
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  /// Подтверждение удаления пользователя
+  Future<void> _confirmDeleteUser(
+    Context ctx,
+    String userId,
+    int messageId,
+  ) async {
+    final user = await DataSource.instance.getUserById(userId);
+
+    if (user == null) {
+      await _showUsersList(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    final name = user.firstName ?? user.phone ?? user.id;
+    await DataSource.instance.deleteUserWithData(user.id);
+
+    final keyboard = InlineKeyboard()
+        .add('👥 Пользователи', 'admin_users')
+        .row()
+        .add('« Админ меню', 'admin_menu');
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      '✅ Пользователь *${_escapeMarkdown(name)}* удалён',
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  // ============= Методы управления регистрацией (Admin) =============
+
+  /// Показать настройки регистрации
+  Future<void> _showRegistrationSettings(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final mode = await DataSource.instance.getRegistrationMode();
+    final pendingCount =
+        (await DataSource.instance.getAllPendingRegistrations()).length;
+
+    final modeNames = {
+      'free': '✅ Свободная',
+      'approval': '👨‍💼 Одобрение админа',
+      'allowed_phones': '📱 Разрешённые номера',
+      'invite_code': '🔐 Инвайт-код',
+    };
+
+    final currentMode = modeNames[mode] ?? 'Свободная';
+
+    var keyboard = InlineKeyboard()
+        .add('✅ Свободная', 'set_reg_mode_free')
+        .row()
+        .add('👨‍💼 Одобрение админа', 'set_reg_mode_approval')
+        .row()
+        .add('📱 Разрешённые номера', 'set_reg_mode_allowed_phones')
+        .row()
+        .add('🔐 Инвайт-код', 'set_reg_mode_invite_code')
+        .row();
+
+    if (mode == 'approval' && pendingCount > 0) {
+      keyboard =
+          keyboard.add('📝 Заявки ($pendingCount)', 'admin_pending_registrations').row();
+    } else if (mode == 'approval') {
+      keyboard = keyboard.add('📝 Заявки (0)', 'admin_pending_registrations').row();
+    }
+
+    if (mode == 'allowed_phones') {
+      keyboard = keyboard.add('📱 Редактировать номера', 'admin_allowed_phones').row();
+    }
+
+    if (mode == 'invite_code') {
+      keyboard = keyboard.add('🔐 Инвайт-коды', 'admin_invite_codes').row();
+    }
+
+    keyboard = keyboard.add('« Назад', 'admin_menu');
+
+    final text = '🔐 *Настройки регистрации*\n\n'
+        'Текущий режим: *$currentMode*\n\n'
+        '📋 *Описание режимов:*\n'
+        '• *Свободная* — любой может зарегистрироваться\n'
+        '• *Одобрение* — требуется одобрение админа\n'
+        '• *Разрешённые номера* — только указанные телефоны\n'
+        '• *Инвайт-код* — нужен код для регистрации\n\n'
+        'Выберите режим:';
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Установить режим регистрации
+  Future<void> _setRegistrationMode(
+    Context ctx,
+    String mode,
+    int messageId,
+  ) async {
+    // Допустимые режимы регистрации
+    const allowedModes = <String>{
+      'free',
+      'approval',
+      'allowed_phones',
+      'invite_code',
+    };
+
+    if (!allowedModes.contains(mode)) {
+      _log('Попытка установить некорректный режим регистрации: "$mode"');
+      // Не меняем настройки, просто показываем текущие
+      await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    await DataSource.instance.setRegistrationMode(mode);
+    await _showRegistrationSettings(ctx, messageId: messageId, edit: true);
+  }
+
+  /// Показать список ожидающих регистраций с пагинацией
+  Future<void> _showPendingRegistrations(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+    int page = 0,
+  }) async {
+    final offset = page * _pendingPerPage;
+    final (pending, totalCount) =
+        await DataSource.instance.getPendingRegistrationsPage(
+      offset: offset,
+      limit: _pendingPerPage,
+    );
+
+    var keyboard = InlineKeyboard();
+
+    if (totalCount == 0) {
+      keyboard = keyboard.add('« Назад', 'admin_registration');
+
+      const text = '📝 *Заявки на регистрацию*\n\nЗаявок пока нет.';
+
+      if (edit && messageId != null) {
+        await ctx.api.editMessageText(
+          ChatID(ctx.chat!.id),
+          messageId,
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      } else {
+        await ctx.reply(
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      }
+      return;
+    }
+
+    final totalPages = (totalCount / _pendingPerPage).ceil();
+
+    // Проверяем корректность страницы
+    final validPage = page.clamp(0, totalPages - 1);
+    if (validPage != page) {
+      await _showPendingRegistrations(
+        ctx,
+        messageId: messageId,
+        edit: edit,
+        page: validPage,
+      );
+      return;
+    }
+
+    var text = '📝 *Заявки на регистрацию* ($totalCount)\n'
+        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n';
+
+    for (final reg in pending) {
+      final name = [reg.firstName, reg.lastName]
+          .where((s) => s != null && s.isNotEmpty)
+          .join(' ');
+      final displayName = name.isNotEmpty ? name : reg.phone;
+
+      text += '👤 *${_escapeMarkdown(displayName)}*\n'
+          '📱 `${reg.phone}`\n'
+          '📅 ${_formatDate(reg.createdAt)}\n\n';
+
+      keyboard = keyboard
+          .add('✅', 'approve_registration_${reg.id}')
+          .add('❌', 'reject_registration_${reg.id}')
+          .row();
+    }
+
+    // Кнопки пагинации
+    if (totalPages > 1) {
+      if (page > 0) {
+        keyboard =
+            keyboard.add('⬅️ Назад', 'admin_pending_page_${page - 1}');
+      }
+      if (page < totalPages - 1) {
+        keyboard =
+            keyboard.add('➡️ Далее', 'admin_pending_page_${page + 1}');
+      }
+      keyboard = keyboard.row();
+    }
+
+    keyboard = keyboard.add('« Назад', 'admin_registration');
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Одобрить регистрацию
+  Future<void> _approveRegistration(
+    Context ctx,
+    int pendingId,
+    int messageId,
+  ) async {
+    final pending =
+        await DataSource.instance.getPendingRegistrationById(pendingId);
+    if (pending == null) {
+      await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    final user = await DataSource.instance.approveRegistration(pendingId);
+    if (user == null) {
+      await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    // Уведомляем пользователя
+    try {
+      final keyboard = InlineKeyboard().add('▶️ Начать', 'main_menu');
+
+      await _bot?.api.sendMessage(
+        ChatID(int.parse(pending.telegramId)),
+        '✅ *Ваша заявка одобрена!*\n\n'
+        '👋 Добро пожаловать в Lampa Self-Hosted!\n\n'
+        'Теперь вы можете добавить устройства и начать пользоваться сервисом.',
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } catch (e) {
+      _log('Failed to notify approved user: $e');
+    }
+
+    await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+  }
+
+  /// Отклонить регистрацию
+  Future<void> _rejectRegistration(
+    Context ctx,
+    int pendingId,
+    int messageId,
+  ) async {
+    final pending =
+        await DataSource.instance.getPendingRegistrationById(pendingId);
+    if (pending == null) {
+      await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+      return;
+    }
+
+    await DataSource.instance.deletePendingRegistration(pendingId);
+
+    // Уведомляем пользователя
+    try {
+      await _bot?.api.sendMessage(
+        ChatID(int.parse(pending.telegramId)),
+        '❌ *Заявка отклонена*\n\n'
+        'К сожалению, ваша заявка на регистрацию была отклонена администратором.',
+        parseMode: ParseMode.markdown,
+      );
+    } catch (e) {
+      _log('Failed to notify rejected user: $e');
+    }
+
+    await _showPendingRegistrations(ctx, messageId: messageId, edit: true);
+  }
+
+  /// Показать инвайт-коды
+  Future<void> _showInviteCodes(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final codes = await DataSource.instance.getAllInviteCodes();
+
+    var keyboard = InlineKeyboard()
+        .add('➕ Одноразовый код', 'create_invite_code_onetime')
+        .row()
+        .add('➕ Многоразовый код', 'create_invite_code_unlimited')
+        .row();
+
+    var text = '🔐 *Инвайт-коды*\n\n';
+
+    if (codes.isEmpty) {
+      text += 'Кодов пока нет.\n\n';
+    } else {
+      for (final code in codes.take(10)) {
+        final typeIcon = code.oneTime ? '1️⃣' : '♾';
+        final usesInfo = code.oneTime
+            ? '(осталось: ${code.usesLeft})'
+            : '(безлимит)';
+        final expired = code.expiresAt != null &&
+            DateTime.now().isAfter(code.expiresAt!);
+        final status = expired ? '❌' : (code.usesLeft > 0 ? '✅' : '❌');
+
+        text += '$status $typeIcon `${code.code}` $usesInfo\n';
+        keyboard = keyboard
+            .add('🗑 ${code.code}', 'delete_invite_code_${code.id}')
+            .row();
+      }
+      text += '\n';
+    }
+
+    keyboard = keyboard.add('« Назад', 'admin_registration');
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Создать инвайт-код
+  Future<void> _createInviteCode(
+    Context ctx, {
+    required bool oneTime,
+    int? messageId,
+  }) async {
+    final code = await DataSource.instance.createInviteCode(
+      oneTime: oneTime,
+      usesLeft: oneTime ? 1 : DataSource.unlimitedUsesCount,
+    );
+
+    final typeText = oneTime ? 'одноразовый' : 'многоразовый';
+
+    final keyboard = InlineKeyboard()
+        .add('🔐 К списку кодов', 'admin_invite_codes')
+        .row()
+        .add('« Настройки регистрации', 'admin_registration');
+
+    await ctx.api.sendMessage(
+      ChatID(ctx.chat!.id),
+      '✅ *Инвайт-код создан!*\n\n'
+      '🔐 Код: `${code.code}`\n'
+      '📋 Тип: $typeText\n\n'
+      'Поделитесь этим кодом с пользователем для регистрации.',
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  /// Удалить инвайт-код
+  Future<void> _deleteInviteCode(
+    Context ctx,
+    int codeId,
+    int messageId,
+  ) async {
+    await DataSource.instance.deleteInviteCode(codeId);
+    await _showInviteCodes(ctx, messageId: messageId, edit: true);
+  }
+
+  /// Показать запрос ввода разрешённых телефонов
+  Future<void> _showAllowedPhonesPrompt(Context ctx, int messageId) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final currentPhones = await DataSource.instance.getAllowedPhones();
+
+    DataSource.instance.setPendingNoticeCreation(telegramUserId, {
+      'step': 'allowed_phones',
+    });
+
+    final keyboard = InlineKeyboard().add('❌ Отмена', 'admin_registration');
+
+    var text = '📱 *Разрешённые номера телефонов*\n\n';
+    if (currentPhones.isNotEmpty) {
+      text += 'Текущий список:\n';
+      for (final phone in currentPhones) {
+        text += '• `$phone`\n';
+      }
+      text += '\n';
+    }
+    text += 'Отправьте список номеров телефонов, '
+        'каждый номер с новой строки или через запятую:\n\n'
+        'Пример:\n'
+        '`+79001234567`\n'
+        '`+79007654321`';
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      text,
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
   }
 }

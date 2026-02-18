@@ -19,6 +19,7 @@ class Users extends Table {
   TextColumn get phone => text().nullable()();
   TextColumn get firstName => text().named('first_name').nullable()();
   TextColumn get lastName => text().named('last_name').nullable()();
+  BoolColumn get blocked => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -133,6 +134,39 @@ class Notices extends Table {
   DateTimeColumn get expiresAt => dateTime().named('expires_at').nullable()();
 }
 
+/// Таблица настроек приложения (key-value)
+class Settings extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
+/// Таблица ожидающих регистраций (для режима одобрения админом)
+class PendingRegistrations extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get telegramId => text().named('telegram_id')();
+  TextColumn get phone => text()();
+  TextColumn get firstName => text().named('first_name').nullable()();
+  TextColumn get lastName => text().named('last_name').nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+}
+
+/// Таблица инвайт-кодов для регистрации
+class InviteCodes extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get code => text().unique()();
+  BoolColumn get oneTime =>
+      boolean().named('one_time').withDefault(const Constant(true))();
+  IntColumn get usesLeft =>
+      integer().named('uses_left').withDefault(const Constant(1))();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+  DateTimeColumn get expiresAt => dateTime().named('expires_at').nullable()();
+}
+
 @DriftDatabase(
   tables: [
     Users,
@@ -143,6 +177,9 @@ class Notices extends Table {
     BookmarkChanges,
     ProfileVersions,
     Notices,
+    Settings,
+    PendingRegistrations,
+    InviteCodes,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -151,7 +188,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -162,6 +199,14 @@ class AppDatabase extends _$AppDatabase {
       onUpgrade: (Migrator m, int from, int to) async {
         if (from < 2) {
           await m.createTable(notices);
+        }
+        if (from < 3) {
+          // Add blocked column to users
+          await m.addColumn(users, users.blocked);
+          // Create new tables
+          await m.createTable(settings);
+          await m.createTable(pendingRegistrations);
+          await m.createTable(inviteCodes);
         }
       },
     );
@@ -177,6 +222,18 @@ class AppDatabase extends _$AppDatabase {
           .getSingleOrNull();
 
   Future<List<User>> getAllUsers() => select(users).get();
+
+  /// Получить пользователей с пагинацией
+  Future<(List<User>, int)> getUsersPage({
+    required int offset,
+    required int limit,
+  }) async {
+    final count = await (selectOnly(users)..addColumns([countAll()])).getSingle();
+    final totalCount = count.read(countAll()) ?? 0;
+    
+    final userList = await (select(users)..limit(limit, offset: offset)).get();
+    return (userList, totalCount);
+  }
 
   Future<User> insertUser(UsersCompanion user) async {
     await into(users).insert(user);
@@ -396,6 +453,163 @@ class AppDatabase extends _$AppDatabase {
   Future<void> toggleNoticeActive(int id, {required bool active}) async {
     await (update(notices)..where((n) => n.id.equals(id)))
         .write(NoticesCompanion(active: Value(active)));
+  }
+
+  // =============== Settings ===============
+
+  Future<String?> getSetting(String key) async {
+    final setting =
+        await (select(settings)..where((s) => s.key.equals(key)))
+            .getSingleOrNull();
+    return setting?.value;
+  }
+
+  Future<void> setSetting(String key, String value) async {
+    await into(settings).insertOnConflictUpdate(
+      SettingsCompanion(
+        key: Value(key),
+        value: Value(value),
+      ),
+    );
+  }
+
+  // =============== Pending Registrations ===============
+
+  Future<List<PendingRegistration>> getAllPendingRegistrations() =>
+      (select(pendingRegistrations)
+            ..orderBy([(p) => OrderingTerm.desc(p.createdAt)]))
+          .get();
+
+  /// Получить ожидающие регистрации с пагинацией
+  Future<(List<PendingRegistration>, int)> getPendingRegistrationsPage({
+    required int offset,
+    required int limit,
+  }) async {
+    final count = await (selectOnly(pendingRegistrations)
+          ..addColumns([countAll()]))
+        .getSingle();
+    final totalCount = count.read(countAll()) ?? 0;
+
+    final list = await (select(pendingRegistrations)
+          ..orderBy([(p) => OrderingTerm.desc(p.createdAt)])
+          ..limit(limit, offset: offset))
+        .get();
+    return (list, totalCount);
+  }
+
+  Future<PendingRegistration?> getPendingRegistrationById(int id) =>
+      (select(pendingRegistrations)..where((p) => p.id.equals(id)))
+          .getSingleOrNull();
+
+  Future<PendingRegistration?> getPendingRegistrationByTelegramId(
+    String telegramId,
+  ) =>
+      (select(pendingRegistrations)
+            ..where((p) => p.telegramId.equals(telegramId)))
+          .getSingleOrNull();
+
+  Future<PendingRegistration> insertPendingRegistration(
+    PendingRegistrationsCompanion registration,
+  ) async {
+    final id = await into(pendingRegistrations).insert(registration);
+    return (await getPendingRegistrationById(id))!;
+  }
+
+  Future<void> deletePendingRegistration(int id) =>
+      (delete(pendingRegistrations)..where((p) => p.id.equals(id))).go();
+
+  Future<void> deletePendingRegistrationByTelegramId(String telegramId) =>
+      (delete(pendingRegistrations)
+            ..where((p) => p.telegramId.equals(telegramId)))
+          .go();
+
+  // =============== Invite Codes ===============
+
+  Future<List<InviteCode>> getAllInviteCodes() =>
+      (select(inviteCodes)..orderBy([(c) => OrderingTerm.desc(c.createdAt)]))
+          .get();
+
+  Future<InviteCode?> getInviteCodeById(int id) =>
+      (select(inviteCodes)..where((c) => c.id.equals(id))).getSingleOrNull();
+
+  Future<InviteCode?> getInviteCodeByCode(String code) =>
+      (select(inviteCodes)..where((c) => c.code.equals(code))).getSingleOrNull();
+
+  Future<InviteCode> insertInviteCode(InviteCodesCompanion code) async {
+    final id = await into(inviteCodes).insert(code);
+    return (await getInviteCodeById(id))!;
+  }
+
+  Future<void> updateInviteCode(InviteCode code) =>
+      update(inviteCodes).replace(code);
+
+  Future<void> deleteInviteCode(int id) =>
+      (delete(inviteCodes)..where((c) => c.id.equals(id))).go();
+
+  /// Использовать инвайт-код. Возвращает true если код валиден и был использован
+  /// Операция атомарная - защита от race condition
+  Future<bool> useInviteCode(String code) async {
+    final now = DateTime.now();
+
+    // Атомарно уменьшаем uses_left на 1 только если код существует, не истёк и ещё доступен
+    final affectedRows = await (update(inviteCodes)
+          ..where(
+            (c) =>
+                c.code.equals(code) &
+                c.usesLeft.isBiggerThanValue(0) &
+                (c.expiresAt.isNull() | c.expiresAt.isBiggerThanValue(now)),
+          ))
+        .write(
+      InviteCodesCompanion.custom(
+        usesLeft: const CustomExpression<int>('uses_left - 1'),
+      ),
+    );
+
+    return affectedRows > 0;
+  }
+
+  // =============== User blocking ===============
+
+  Future<void> blockUser(String userId) async {
+    await (update(users)..where((u) => u.id.equals(userId)))
+        .write(const UsersCompanion(blocked: Value(true)));
+  }
+
+  Future<void> unblockUser(String userId) async {
+    await (update(users)..where((u) => u.id.equals(userId)))
+        .write(const UsersCompanion(blocked: Value(false)));
+  }
+
+  /// Удаление пользователя и всех связанных данных (атомарно)
+  Future<void> deleteUserWithData(String userId) async {
+    await transaction(() async {
+      // Получаем все профили пользователя
+      final userProfiles = await getProfilesByUserId(userId);
+
+      // Для каждого профиля удаляем связанные данные
+      for (final profile in userProfiles) {
+        await (delete(bookmarks)..where((b) => b.profileId.equals(profile.id)))
+            .go();
+        await (delete(timelineEntries)
+              ..where((t) => t.profileId.equals(profile.id)))
+            .go();
+        await (delete(bookmarkChanges)
+              ..where((c) => c.profileId.equals(profile.id)))
+            .go();
+        await (delete(profileVersions)
+              ..where((v) => v.profileId.equals(profile.id)))
+            .go();
+      }
+
+      // Удаляем профили
+      await (delete(profiles)..where((p) => p.userId.equals(userId))).go();
+
+      // Удаляем устройства
+      await (delete(devices)..where((d) => d.userId.equals(userId))).go();
+
+      // Удаляем пользователя
+      await (delete(users)..where((u) => u.id.equals(userId))).go();
+    });
   }
 }
 
