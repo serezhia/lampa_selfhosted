@@ -245,7 +245,7 @@
     // Track Selection UI
     // =========================================================================
 
-    function showAudioSelector(data, audioTracks, subtitleTracks, duration) {
+    function showAudioSelector(data, audioTracks, subtitleTracks) {
         if (!audioTracks.length) {
             notify('Не найдены аудиодорожки');
             return;
@@ -269,9 +269,9 @@
 
                 // If there are subtitles, ask for them too
                 if (subtitleTracks && subtitleTracks.length > 0) {
-                    showSubtitleSelector(data, item.track, subtitleTracks, duration);
+                    showSubtitleSelector(data, item.track, subtitleTracks);
                 } else {
-                    startTranscoding(data, item.track, null, duration);
+                    startTranscoding(data, item.track, null);
                 }
             },
             onBack: function () {
@@ -280,7 +280,7 @@
         });
     }
 
-    function showSubtitleSelector(data, audioTrack, subtitleTracks, duration) {
+    function showSubtitleSelector(data, audioTrack, subtitleTracks) {
         // Filter to only show text-based subtitles
         var textSubs = subtitleTracks.filter(function (track) {
             return isTextSubtitle(track);
@@ -294,7 +294,7 @@
             if (hasGraphical) {
                 notify('Только графические субтитры (PGS/VOBSUB) - не поддерживаются', 4000);
             }
-            startTranscoding(data, audioTrack, null, duration);
+            startTranscoding(data, audioTrack, null);
             return;
         }
 
@@ -316,7 +316,7 @@
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
-                startTranscoding(data, audioTrack, item.track, duration);
+                startTranscoding(data, audioTrack, item.track);
             },
             onBack: function () {
                 Lampa.Controller.toggle(lastController);
@@ -353,86 +353,9 @@
     // Transcoding Control
     // =========================================================================
 
-    var mediaDuration = null;  // Store duration from ffprobe
-    var durationOverrideApplied = false;  // Track if override is active
+    // Note: Duration is dynamic for live HLS, we don't try to fix it
 
-    // =========================================================================
-    // Duration Override
-    // =========================================================================
-
-    /**
-     * Override video.duration property to return the real duration from ffprobe.
-     * HLS streams report duration that grows dynamically as segments load,
-     * so we fix it to the known value.
-     */
-    function overrideVideoDuration(video, fixedDuration) {
-        if (!video || !fixedDuration || fixedDuration <= 0) return;
-
-        try {
-            Object.defineProperty(video, 'duration', {
-                configurable: true,
-                get: function () {
-                    return fixedDuration;
-                },
-                set: function () {
-                    // ignore sets
-                }
-            });
-
-            durationOverrideApplied = true;
-            log('Duration overridden to', fixedDuration, 'seconds');
-        } catch (e) {
-            log('Failed to override duration:', e);
-        }
-    }
-
-    /**
-     * Restore the original video.duration property
-     */
-    function restoreVideoDuration(video) {
-        if (!durationOverrideApplied) return;
-
-        try {
-            if (video) {
-                // Remove the instance-level override, restoring prototype behavior
-                delete video.duration;
-            }
-            durationOverrideApplied = false;
-            log('Duration restored to native');
-        } catch (e) {
-            log('Failed to restore duration:', e);
-        }
-    }
-
-    /**
-     * Handler for loadeddata event — apply duration override as soon as
-     * video metadata is available
-     */
-    function handleVideoLoadedData() {
-        if (!activeJob || !mediaDuration) return;
-
-        try {
-            var video = Lampa.PlayerVideo.video();
-            if (video) {
-                log('Video loadeddata, native duration:', video.duration,
-                    '- overriding to:', mediaDuration);
-                overrideVideoDuration(video, mediaDuration);
-
-                // Force a timeupdate-like refresh so the UI picks up the new duration
-                // immediately instead of waiting for the next natural timeupdate
-                try {
-                    Lampa.PlayerVideo.listener.send('timeupdate', {
-                        duration: mediaDuration,
-                        current: video.currentTime || 0
-                    });
-                } catch (e) { /* noop */ }
-            }
-        } catch (e) {
-            log('Error in loadeddata handler:', e);
-        }
-    }
-
-    function startTranscoding(data, audioTrack, subtitleTrack, duration) {
+    function startTranscoding(data, audioTrack, subtitleTrack) {
         stopHeartbeat();
         ensureJobStopped(true);
 
@@ -445,16 +368,6 @@
 
         if (subtitleTrack) {
             payload.subtitleIndex = subtitleTrack.index;
-        }
-
-        // Pass duration from ffprobe
-        if (duration) {
-            payload.duration = duration;
-        }
-
-        // Pass movie metadata for better filenames
-        if (data.movie) {
-            payload.title = data.movie.title || data.movie.name || '';
         }
 
         log('Start transcoding:', payload);
@@ -471,12 +384,8 @@
 
                 activeJob = {
                     streamId: response.streamId,
-                    playlistUrl: response.playlistUrl,
-                    duration: response.duration || duration
+                    playlistUrl: response.playlistUrl
                 };
-
-                // Store duration for player
-                mediaDuration = response.duration || duration;
 
                 // Start heartbeat
                 startHeartbeat();
@@ -485,11 +394,6 @@
                 var playback = Object.assign({}, data);
                 playback.transcoding = true;
                 playback.url = addAuthToUrl(response.playlistUrl);
-
-                // Set duration if known
-                if (mediaDuration) {
-                    playback.duration = mediaDuration;
-                }
 
                 // Add subtitles if returned
                 if (response.subtitlesUrl) {
@@ -591,13 +495,6 @@
 
             var streams = (info && Array.isArray(info.streams)) ? info.streams : [];
 
-            // Get duration from format info
-            var duration = null;
-            if (info && info.format && info.format.duration) {
-                duration = parseFloat(info.format.duration);
-                log('Media duration:', duration, 'seconds');
-            }
-
             var audioTracks = streams.filter(function (s) {
                 return s.codec_type === 'audio';
             });
@@ -616,9 +513,9 @@
 
             // If only one audio track, skip selection
             if (audioTracks.length === 1 && subtitleTracks.length === 0) {
-                startTranscoding(data, audioTracks[0], null, duration);
+                startTranscoding(data, audioTracks[0], null);
             } else {
-                showAudioSelector(data, audioTracks, subtitleTracks, duration);
+                showAudioSelector(data, audioTracks, subtitleTracks);
             }
         }, function (error) {
             hideWait();
@@ -629,27 +526,11 @@
 
     function handlePlayerDestroy() {
         log('Player destroy event');
-
-        // Restore native duration before destroying
-        try {
-            var video = Lampa.PlayerVideo.video();
-            restoreVideoDuration(video);
-        } catch (e) { /* noop */ }
-
-        mediaDuration = null;
         ensureJobStopped(true);
     }
 
     function handlePlayerBack() {
         log('Player back event');
-
-        // Restore native duration before leaving
-        try {
-            var video = Lampa.PlayerVideo.video();
-            restoreVideoDuration(video);
-        } catch (e) { /* noop */ }
-
-        mediaDuration = null;
         ensureJobStopped(true);
     }
 
@@ -686,8 +567,6 @@
         Lampa.Player.listener.follow('back', handlePlayerBack);
 
         if (Lampa.PlayerVideo && Lampa.PlayerVideo.listener) {
-            Lampa.PlayerVideo.listener.follow('loadeddata', handleVideoLoadedData);
-            Lampa.PlayerVideo.listener.follow('canplay', handleVideoLoadedData);
             Lampa.PlayerVideo.listener.follow('pause', handleVideoPause);
             Lampa.PlayerVideo.listener.follow('play', handleVideoPlay);
         }

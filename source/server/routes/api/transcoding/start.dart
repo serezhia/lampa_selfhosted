@@ -19,7 +19,6 @@ Future<Response> onRequest(RequestContext context) async {
     final src = json['src'] as String?;
     final audioIndex = json['audioIndex'] as int? ?? 0;
     final subtitleIndex = json['subtitleIndex'] as int?;
-    final duration = (json['duration'] as num?)?.toDouble();
 
     if (src == null || src.isEmpty) {
       return Response.json(
@@ -36,17 +35,12 @@ Future<Response> onRequest(RequestContext context) async {
       sourceUrl: src,
       audioIndex: audioIndex,
       subtitleIndex: subtitleIndex,
-      duration: duration,
     );
 
     final response = <String, dynamic>{
       'streamId': session.streamId,
       'playlistUrl': transcoding.getPlaylistUrl(session.streamId),
     };
-
-    if (session.duration != null) {
-      response['duration'] = session.duration;
-    }
 
     if (subtitleIndex != null) {
       response['subtitlesUrl'] = transcoding.getSubtitlesUrl(session.streamId);

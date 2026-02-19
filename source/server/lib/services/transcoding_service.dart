@@ -12,7 +12,6 @@ class TranscodingSession {
     required this.audioIndex,
     required this.outputDir,
     this.subtitleIndex,
-    this.duration,
   })  : startedAt = DateTime.now(),
         lastHeartbeat = DateTime.now();
 
@@ -20,7 +19,6 @@ class TranscodingSession {
   final String sourceUrl;
   final int audioIndex;
   final int? subtitleIndex;
-  final double? duration;
   final String outputDir;
   final DateTime startedAt;
   DateTime lastHeartbeat;
@@ -195,7 +193,6 @@ class TranscodingService {
     required String sourceUrl,
     required int audioIndex,
     int? subtitleIndex,
-    double? duration,
   }) async {
     final streamId = const Uuid().v4();
     final outputDir = '$_outputBaseDir/$streamId';
@@ -208,7 +205,6 @@ class TranscodingService {
       sourceUrl: sourceUrl,
       audioIndex: audioIndex,
       subtitleIndex: subtitleIndex,
-      duration: duration,
       outputDir: outputDir,
     );
 
@@ -267,6 +263,7 @@ class TranscodingService {
   }
 
   /// Build FFmpeg arguments for HLS transcoding
+  /// Simple live HLS - segments are never deleted, timeline grows dynamically
   List<String> _buildFfmpegArgs(TranscodingSession session) {
     final args = <String>[
       '-y',
@@ -283,12 +280,12 @@ class TranscodingService {
       // Audio: transcode to AAC for browser compatibility
       ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
 
-    // HLS output settings
+    // Simple HLS output - no segment deletion, playlist grows dynamically
     args
       ..addAll(['-f', 'hls'])
       ..addAll(['-hls_time', '4'])
-      ..addAll(['-hls_list_size', '0'])
-      ..addAll(['-hls_flags', 'delete_segments+append_list'])
+      ..addAll(['-hls_list_size', '0']) // Keep all segments in playlist
+      ..addAll(['-hls_flags', 'independent_segments']) // No delete_segments!
       ..addAll(
         ['-hls_segment_filename', '${session.outputDir}/segment_%03d.ts'],
       )
