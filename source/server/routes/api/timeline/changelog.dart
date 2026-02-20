@@ -26,9 +26,12 @@ Future<Response> onRequest(RequestContext context) async {
   if (since < currentVersion) {
     for (final entry in timelineMap.entries) {
       changedTimelines[entry.key] = {
+        'hash': entry.key,
+        'profile': profile.id,
         'percent': entry.value.percent,
         'time': entry.value.time,
         'duration': entry.value.duration,
+        'received': true,
       };
     }
   }

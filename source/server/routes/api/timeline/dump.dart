@@ -21,9 +21,12 @@ Future<Response> onRequest(RequestContext context) async {
   // Lampa ожидает формат: {timelines: {hash: {percent, time, duration}, ...}, version: N}
   final jsonMap = timelineMap.map(
     (key, value) => MapEntry(key, {
+      'hash': key,
+      'profile': profile.id,
       'percent': value.percent,
       'time': value.time,
       'duration': value.duration,
+      'received': true,
     }),
   );
 

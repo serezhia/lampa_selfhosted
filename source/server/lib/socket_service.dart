@@ -247,10 +247,10 @@ class SocketService {
         return;
       }
 
-      final profileId = entryData['profile'] as int;
-      final hash = entryData['hash'] as String?;
+      final profileId = int.tryParse(entryData['profile'].toString());
+      final hash = entryData['hash']?.toString();
 
-      if (hash == null) return;
+      if (profileId == null || hash == null) return;
 
       // Update timeline in database
       await DataSource.instance.updateTimeline(profileId, hash, {
