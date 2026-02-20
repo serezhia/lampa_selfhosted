@@ -369,9 +369,9 @@ class TelegramBotService {
 
   /// Уведомить админов о новой заявке на регистрацию
   Future<void> _notifyAdminsNewPendingRegistration({
+    required String phone,
     String? firstName,
     String? lastName,
-    required String phone,
   }) async {
     try {
       final adminIds = await DataSource.instance.getAdminTelegramIds();
@@ -2244,12 +2244,17 @@ class TelegramBotService {
     }
 
     final totalPages = (totalCount / _usersPerPage).ceil();
-    
+
     // Проверяем корректность страницы
     final validPage = page.clamp(0, totalPages - 1);
     if (validPage != page) {
       // Рекурсивно вызываем с корректной страницей
-      await _showUsersList(ctx, messageId: messageId, edit: edit, page: validPage);
+      await _showUsersList(
+        ctx,
+        messageId: messageId,
+        edit: edit,
+        page: validPage,
+      );
       return;
     }
 
@@ -2328,9 +2333,11 @@ class TelegramBotService {
     var keyboard = InlineKeyboard();
 
     if (user.blocked) {
-      keyboard = keyboard.add('✅ Разблокировать', 'admin_unblock_user_${user.id}');
+      keyboard =
+          keyboard.add('✅ Разблокировать', 'admin_unblock_user_${user.id}');
     } else {
-      keyboard = keyboard.add('🚫 Заблокировать', 'admin_block_user_${user.id}');
+      keyboard =
+          keyboard.add('🚫 Заблокировать', 'admin_block_user_${user.id}');
     }
 
     keyboard = keyboard
@@ -2480,14 +2487,17 @@ class TelegramBotService {
         .row();
 
     if (mode == 'approval' && pendingCount > 0) {
-      keyboard =
-          keyboard.add('📝 Заявки ($pendingCount)', 'admin_pending_registrations').row();
+      keyboard = keyboard
+          .add('📝 Заявки ($pendingCount)', 'admin_pending_registrations')
+          .row();
     } else if (mode == 'approval') {
-      keyboard = keyboard.add('📝 Заявки (0)', 'admin_pending_registrations').row();
+      keyboard =
+          keyboard.add('📝 Заявки (0)', 'admin_pending_registrations').row();
     }
 
     if (mode == 'allowed_phones') {
-      keyboard = keyboard.add('📱 Редактировать номера', 'admin_allowed_phones').row();
+      keyboard =
+          keyboard.add('📱 Редактировать номера', 'admin_allowed_phones').row();
     }
 
     if (mode == 'invite_code') {
@@ -2600,8 +2610,13 @@ class TelegramBotService {
       return;
     }
 
-    var text = '📝 *Заявки на регистрацию* ($totalCount)\n'
-        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n';
+    keyboard = InlineKeyboard();
+
+    final buffer = StringBuffer();
+    buffer.write(
+      '📝 *Заявки на регистрацию* ($totalCount)\n'
+      '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n',
+    );
 
     for (final reg in pending) {
       final name = [reg.firstName, reg.lastName]
@@ -2609,9 +2624,11 @@ class TelegramBotService {
           .join(' ');
       final displayName = name.isNotEmpty ? name : reg.phone;
 
-      text += '👤 *${_escapeMarkdown(displayName)}*\n'
-          '📱 `${reg.phone}`\n'
-          '📅 ${_formatDate(reg.createdAt)}\n\n';
+      buffer.write(
+        '👤 *${_escapeMarkdown(displayName)}*\n'
+        '📱 `${reg.phone}`\n'
+        '📅 ${_formatDate(reg.createdAt)}\n\n',
+      );
 
       keyboard = keyboard
           .add('✅', 'approve_registration_${reg.id}')
@@ -2619,15 +2636,15 @@ class TelegramBotService {
           .row();
     }
 
+    final text = buffer.toString();
+
     // Кнопки пагинации
     if (totalPages > 1) {
       if (page > 0) {
-        keyboard =
-            keyboard.add('⬅️ Назад', 'admin_pending_page_${page - 1}');
+        keyboard = keyboard.add('⬅️ Назад', 'admin_pending_page_${page - 1}');
       }
       if (page < totalPages - 1) {
-        keyboard =
-            keyboard.add('➡️ Далее', 'admin_pending_page_${page + 1}');
+        keyboard = keyboard.add('➡️ Далее', 'admin_pending_page_${page + 1}');
       }
       keyboard = keyboard.row();
     }
@@ -2733,27 +2750,28 @@ class TelegramBotService {
         .add('➕ Многоразовый код', 'create_invite_code_unlimited')
         .row();
 
-    var text = '🔐 *Инвайт-коды*\n\n';
+    final buffer = StringBuffer('🔐 *Инвайт-коды*\n\n');
 
     if (codes.isEmpty) {
-      text += 'Кодов пока нет.\n\n';
+      buffer.write('Кодов пока нет.\n\n');
     } else {
       for (final code in codes.take(10)) {
         final typeIcon = code.oneTime ? '1️⃣' : '♾';
-        final usesInfo = code.oneTime
-            ? '(осталось: ${code.usesLeft})'
-            : '(безлимит)';
-        final expired = code.expiresAt != null &&
-            DateTime.now().isAfter(code.expiresAt!);
+        final usesInfo =
+            code.oneTime ? '(осталось: ${code.usesLeft})' : '(безлимит)';
+        final expired =
+            code.expiresAt != null && DateTime.now().isAfter(code.expiresAt!);
         final status = expired ? '❌' : (code.usesLeft > 0 ? '✅' : '❌');
 
-        text += '$status $typeIcon `${code.code}` $usesInfo\n';
+        buffer.write('$status $typeIcon `${code.code}` $usesInfo\n');
         keyboard = keyboard
             .add('🗑 ${code.code}', 'delete_invite_code_${code.id}')
             .row();
       }
-      text += '\n';
+      buffer.write('\n');
     }
+
+    final text = buffer.toString();
 
     keyboard = keyboard.add('« Назад', 'admin_registration');
 
@@ -2824,19 +2842,23 @@ class TelegramBotService {
 
     final keyboard = InlineKeyboard().add('❌ Отмена', 'admin_registration');
 
-    var text = '📱 *Разрешённые номера телефонов*\n\n';
+    final buffer = StringBuffer('📱 *Разрешённые номера телефонов*\n\n');
     if (currentPhones.isNotEmpty) {
-      text += 'Текущий список:\n';
+      buffer.write('Текущий список:\n');
       for (final phone in currentPhones) {
-        text += '• `$phone`\n';
+        buffer.write('• `$phone`\n');
       }
-      text += '\n';
+      buffer.write('\n');
     }
-    text += 'Отправьте список номеров телефонов, '
-        'каждый номер с новой строки или через запятую:\n\n'
-        'Пример:\n'
-        '`+79001234567`\n'
-        '`+79007654321`';
+    buffer.write(
+      'Отправьте список номеров телефонов, '
+      'каждый номер с новой строки или через запятую:\n\n'
+      'Пример:\n'
+      '`+79001234567`\n'
+      '`+79007654321`',
+    );
+
+    final text = buffer.toString();
 
     await ctx.api.editMessageText(
       ChatID(ctx.chat!.id),

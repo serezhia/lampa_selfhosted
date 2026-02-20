@@ -33,17 +33,6 @@ Future<Response> onRequest(RequestContext context) async {
             'version': c.version,
             'entity_id': c.entityId.toString(),
             'updated_at': c.time,
-            'id': null,
-            'cid': null,
-            'type': null,
-            'data': null,
-            'card_id': null,
-            'profile': null,
-            'time': null,
-            'card_title': null,
-            'card_type': null,
-            'lid': null,
-            'card_poster': null,
           };
         }
 

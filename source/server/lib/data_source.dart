@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -548,8 +549,9 @@ class DataSource {
   Future<bool> isPhoneAllowed(String phone) async {
     final allowedPhones = await getAllowedPhones();
     if (allowedPhones.isEmpty) {
-      print('[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration');
-      stdout.flush();
+      print(
+          '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration',);
+      unawaited(stdout.flush());
       return false;
     }
     final normalizedPhone = phone.replaceAll(RegExp(r'[^\d]'), '');

@@ -30,15 +30,38 @@ Future<Response> onRequest(
   String filePath;
   String contentType;
 
-  if (filename == 'playlist.m3u8' || filename.endsWith('.m3u8')) {
+  if (filename == 'playlist.m3u8') {
     filePath = session.playlistPath;
     contentType = 'application/vnd.apple.mpegurl';
   } else if (filename.endsWith('.ts')) {
     filePath = '${session.outputDir}/$filename';
     contentType = 'video/mp2t';
+
+    final match = RegExp(r'segment_(\d+)\.ts').firstMatch(filename);
+    if (match != null) {
+      final segmentNumber = int.parse(match.group(1)!);
+      try {
+        await transcoding.ensureSegmentAvailable(streamId, segmentNumber);
+      } catch (e) {
+        print('[Transcoding] Error ensuring segment $segmentNumber: $e');
+        return Response.json(
+          body: {'error': 'Failed to generate segment'},
+          statusCode: HttpStatus.internalServerError,
+        );
+      }
+    }
   } else if (filename == 'subtitles.vtt' || filename.endsWith('.vtt')) {
     filePath = session.subtitlesPath;
     contentType = 'text/vtt';
+
+    // Wait for subtitle extraction to complete before serving the file
+    if (session.subtitleProcess != null) {
+      try {
+        await session.subtitleProcess!.exitCode;
+      } catch (e) {
+        print('[Transcoding] Error waiting for subtitles: $e');
+      }
+    }
   } else {
     return Response.json(
       body: {'error': 'Unknown file type'},
