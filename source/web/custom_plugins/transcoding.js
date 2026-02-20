@@ -5,6 +5,8 @@
     var API_BASE = '';  // Will use relative URLs
 
     var activeJob = null;
+    var currentJobParams = null;
+    var startRequest = null;
     var heartbeatTimer = null;
 
     // =========================================================================
@@ -97,6 +99,10 @@
 
         xhr.onerror = function () {
             if (onError) onError(new Error('Network error'));
+        };
+
+        xhr.onabort = function () {
+            if (onError) onError(new Error('Aborted'));
         };
 
         xhr.ontimeout = function () {
@@ -356,11 +362,24 @@
     var seekOffset = 0;
     var totalDuration = 0;
     var seekTimeout = null;
-    var isVirtualTimelineInjected = false;
+    var startRequest = null;
+    var currentJobParams = null;
 
     function startTranscoding(data, audioTrack, subtitleTrack, duration, startTime) {
+        if (startRequest) {
+            startRequest.abort();
+            startRequest = null;
+        }
+
         stopHeartbeat();
         ensureJobStopped(true);
+
+        currentJobParams = {
+            data: data,
+            audioTrack: audioTrack,
+            subtitleTrack: subtitleTrack,
+            duration: duration
+        };
 
         startTime = startTime || 0;
         seekOffset = startTime;
@@ -380,8 +399,9 @@
 
         log('Start transcoding:', payload);
 
-        apiRequest('POST', '/api/transcoding/start', payload,
+        startRequest = apiRequest('POST', '/api/transcoding/start', payload,
             function (response) {
+                startRequest = null;
                 hideWait();
                 log('Transcoding started:', response);
 
@@ -421,29 +441,35 @@
 
                 if (startTime > 0 && Lampa.PlayerVideo && Lampa.PlayerVideo.video) {
                     // If seeking, just update the source and play without recreating the video element
-                    var video = Lampa.PlayerVideo.video;
+                    var video = typeof Lampa.PlayerVideo.video === 'function' ? Lampa.PlayerVideo.video() : Lampa.PlayerVideo.video;
 
-                    if (Lampa.PlayerVideo.hls) {
-                        Lampa.PlayerVideo.hls.loadSource(playback.url);
-                        Lampa.PlayerVideo.hls.attachMedia(video);
-                    } else {
-                        video.src = playback.url;
-                        video.load();
-                    }
-                    video.play();
-
-                    // Force subtitle reload if needed
-                    if (response.subtitlesUrl) {
-                        var tracks = video.getElementsByTagName('track');
-                        for (var i = tracks.length - 1; i >= 0; i--) {
-                            video.removeChild(tracks[i]);
+                    if (video) {
+                        if (Lampa.PlayerVideo.hls) {
+                            Lampa.PlayerVideo.hls.loadSource(playback.url);
+                            Lampa.PlayerVideo.hls.attachMedia(video);
+                        } else {
+                            video.src = playback.url;
+                            video.load();
                         }
-                        var track = document.createElement('track');
-                        track.kind = 'subtitles';
-                        track.label = 'Встроенные';
-                        track.src = addAuthToUrl(response.subtitlesUrl);
-                        track.default = true;
-                        video.appendChild(track);
+                        video.play();
+
+                        // Force subtitle reload if needed
+                        if (response.subtitlesUrl) {
+                            var tracks = video.getElementsByTagName('track');
+                            for (var i = tracks.length - 1; i >= 0; i--) {
+                                video.removeChild(tracks[i]);
+                            }
+                            var track = document.createElement('track');
+                            track.kind = 'subtitles';
+                            track.label = 'Встроенные';
+                            track.src = addAuthToUrl(response.subtitlesUrl);
+                            track.default = true;
+                            video.appendChild(track);
+                        }
+                    } else {
+                        // Fallback if video element is not available
+                        Lampa.Player.play(playback);
+                        injectVirtualTimeline();
                     }
                 } else {
                     // Initial playback
@@ -452,6 +478,11 @@
                 }
             },
             function (error) {
+                startRequest = null;
+                if (error && (error.message === 'Aborted' || error.message === 'HTTP 0')) {
+                    log('Start request aborted');
+                    return;
+                }
                 hideWait();
                 notify('Ошибка запуска транскодирования');
                 log('Start error:', error);
@@ -460,14 +491,27 @@
         );
     }
 
-    function injectVirtualTimeline() {
-        if (isVirtualTimelineInjected) return;
-
+    function injectVirtualTimeline(retries) {
+        retries = retries || 0;
         // Wait for video element to be created by Lampa
         setTimeout(function () {
-            if (!Lampa.PlayerVideo || !Lampa.PlayerVideo.video) return;
+            if (!Lampa.PlayerVideo || !Lampa.PlayerVideo.video) {
+                if (retries < 10) injectVirtualTimeline(retries + 1);
+                return;
+            }
 
-            var video = Lampa.PlayerVideo.video;
+            var video = typeof Lampa.PlayerVideo.video === 'function' ? Lampa.PlayerVideo.video() : Lampa.PlayerVideo.video;
+            if (!video || !(video instanceof HTMLMediaElement)) {
+                if (retries < 10) {
+                    injectVirtualTimeline(retries + 1);
+                } else {
+                    log('Video is not an HTMLMediaElement, cannot inject virtual timeline');
+                }
+                return;
+            }
+
+            if (video._virtualTimelineInjected) return;
+
             var origTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
             var origDur = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration');
 
@@ -478,21 +522,39 @@
                     return seekOffset + origTime.get.call(this);
                 },
                 set: function (val) {
-                    // Check if val is within buffered range
+                    // Check if val is within buffered or seekable range
                     var isBuffered = false;
+                    var isSeekable = false;
                     var actualVal = val - seekOffset; // The time relative to the current HLS stream
 
-                    if (actualVal >= 0 && this.buffered) {
-                        for (var i = 0; i < this.buffered.length; i++) {
-                            if (actualVal >= this.buffered.start(i) && actualVal <= this.buffered.end(i)) {
-                                isBuffered = true;
-                                break;
+                    if (actualVal >= 0) {
+                        if (this.buffered) {
+                            for (var i = 0; i < this.buffered.length; i++) {
+                                if (actualVal >= this.buffered.start(i) && actualVal <= this.buffered.end(i)) {
+                                    isBuffered = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (this.seekable) {
+                            for (var i = 0; i < this.seekable.length; i++) {
+                                if (actualVal >= this.seekable.start(i) && actualVal <= this.seekable.end(i)) {
+                                    isSeekable = true;
+                                    break;
+                                }
                             }
                         }
                     }
 
-                    if (isBuffered) {
-                        log('Seek within buffered range:', val);
+                    if (isBuffered || isSeekable) {
+                        log('Seek within buffered/seekable range:', val);
+                        origTime.set.call(this, actualVal);
+                        return;
+                    }
+
+                    // If seeking very close to the start of the current stream, just seek to 0
+                    if (actualVal >= 0 && actualVal < 5) {
+                        log('Seek close to start of stream, allowing:', val);
                         origTime.set.call(this, actualVal);
                         return;
                     }
@@ -508,11 +570,11 @@
 
                     // Debounce seek to avoid spamming backend
                     seekTimeout = setTimeout(function () {
-                        if (activeJob) {
+                        if (currentJobParams) {
                             startTranscoding(
-                                activeJob.data,
-                                activeJob.audioTrack,
-                                activeJob.subtitleTrack,
+                                currentJobParams.data,
+                                currentJobParams.audioTrack,
+                                currentJobParams.subtitleTrack,
                                 totalDuration,
                                 val
                             );
@@ -529,8 +591,32 @@
                 configurable: true
             });
 
-            isVirtualTimelineInjected = true;
+            video._virtualTimelineInjected = true;
             log('Virtual timeline injected');
+
+            // Force Lampa to update its UI with the new duration
+            if (Lampa.PlayerVideo && Lampa.PlayerVideo.listener) {
+                Lampa.PlayerVideo.listener.send('timeupdate', {
+                    duration: video.duration,
+                    currentTime: video.currentTime,
+                    percent: (video.currentTime / video.duration) * 100
+                });
+            }
+
+            // Also intercept Lampa's internal timeupdate to ensure it always sends the mocked values
+            var origAddEventListener = video.addEventListener;
+            video.addEventListener = function (type, listener, options) {
+                if (type === 'timeupdate') {
+                    var wrappedListener = function (e) {
+                        // Lampa reads video.duration and video.currentTime inside its listener
+                        // Since we mocked them, it should read the correct values, but just in case
+                        // we can also modify the event object if needed.
+                        listener.call(this, e);
+                    };
+                    return origAddEventListener.call(this, type, wrappedListener, options);
+                }
+                return origAddEventListener.call(this, type, listener, options);
+            };
         }, 500);
     }
 
@@ -561,6 +647,11 @@
     }
 
     function ensureJobStopped(sendRemote) {
+        if (startRequest) {
+            startRequest.abort();
+            startRequest = null;
+        }
+
         if (!activeJob) return;
 
         var job = activeJob;
@@ -642,13 +733,11 @@
 
     function handlePlayerDestroy() {
         log('Player destroy event');
-        isVirtualTimelineInjected = false;
         ensureJobStopped(true);
     }
 
     function handlePlayerBack() {
         log('Player back event');
-        isVirtualTimelineInjected = false;
         ensureJobStopped(true);
     }
 

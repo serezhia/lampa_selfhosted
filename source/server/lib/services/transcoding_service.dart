@@ -249,11 +249,8 @@ class TranscodingService {
 
         print('[Transcoding] Subtitle extraction started (runs in background)');
 
-        // Wait for subtitle extraction to finish before starting playback
-        // This ensures the full .vtt file is available for Lampa
-        print('[Transcoding] Waiting for subtitle extraction to complete...');
-        await session.subtitleProcess!.exitCode;
-        print('[Transcoding] Subtitle extraction completed');
+        // We no longer wait for subtitle extraction to finish here.
+        // The GET request for subtitles.vtt will wait for it to complete.
       }
 
       // Wait for first segment to be ready

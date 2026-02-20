@@ -228,9 +228,10 @@ class AppDatabase extends _$AppDatabase {
     required int offset,
     required int limit,
   }) async {
-    final count = await (selectOnly(users)..addColumns([countAll()])).getSingle();
+    final count =
+        await (selectOnly(users)..addColumns([countAll()])).getSingle();
     final totalCount = count.read(countAll()) ?? 0;
-    
+
     final userList = await (select(users)..limit(limit, offset: offset)).get();
     return (userList, totalCount);
   }
@@ -458,9 +459,8 @@ class AppDatabase extends _$AppDatabase {
   // =============== Settings ===============
 
   Future<String?> getSetting(String key) async {
-    final setting =
-        await (select(settings)..where((s) => s.key.equals(key)))
-            .getSingleOrNull();
+    final setting = await (select(settings)..where((s) => s.key.equals(key)))
+        .getSingleOrNull();
     return setting?.value;
   }
 
@@ -533,7 +533,8 @@ class AppDatabase extends _$AppDatabase {
       (select(inviteCodes)..where((c) => c.id.equals(id))).getSingleOrNull();
 
   Future<InviteCode?> getInviteCodeByCode(String code) =>
-      (select(inviteCodes)..where((c) => c.code.equals(code))).getSingleOrNull();
+      (select(inviteCodes)..where((c) => c.code.equals(code)))
+          .getSingleOrNull();
 
   Future<InviteCode> insertInviteCode(InviteCodesCompanion code) async {
     final id = await into(inviteCodes).insert(code);

@@ -39,6 +39,15 @@ Future<Response> onRequest(
   } else if (filename == 'subtitles.vtt' || filename.endsWith('.vtt')) {
     filePath = session.subtitlesPath;
     contentType = 'text/vtt';
+
+    // Wait for subtitle extraction to complete before serving the file
+    if (session.subtitleProcess != null) {
+      try {
+        await session.subtitleProcess!.exitCode;
+      } catch (e) {
+        print('[Transcoding] Error waiting for subtitles: $e');
+      }
+    }
   } else {
     return Response.json(
       body: {'error': 'Unknown file type'},
