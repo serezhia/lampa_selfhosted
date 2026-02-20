@@ -12,6 +12,7 @@ class TranscodingSession {
     required this.audioIndex,
     required this.outputDir,
     this.subtitleIndex,
+    this.startTime = 0,
   })  : startedAt = DateTime.now(),
         lastHeartbeat = DateTime.now();
 
@@ -19,6 +20,7 @@ class TranscodingSession {
   final String sourceUrl;
   final int audioIndex;
   final int? subtitleIndex;
+  final int startTime;
   final String outputDir;
   final DateTime startedAt;
   DateTime lastHeartbeat;
@@ -193,6 +195,7 @@ class TranscodingService {
     required String sourceUrl,
     required int audioIndex,
     int? subtitleIndex,
+    int startTime = 0,
   }) async {
     final streamId = const Uuid().v4();
     final outputDir = '$_outputBaseDir/$streamId';
@@ -205,6 +208,7 @@ class TranscodingService {
       sourceUrl: sourceUrl,
       audioIndex: audioIndex,
       subtitleIndex: subtitleIndex,
+      startTime: startTime,
       outputDir: outputDir,
     );
 
@@ -244,6 +248,12 @@ class TranscodingService {
         });
 
         print('[Transcoding] Subtitle extraction started (runs in background)');
+
+        // Wait for subtitle extraction to finish before starting playback
+        // This ensures the full .vtt file is available for Lampa
+        print('[Transcoding] Waiting for subtitle extraction to complete...');
+        await session.subtitleProcess!.exitCode;
+        print('[Transcoding] Subtitle extraction completed');
       }
 
       // Wait for first segment to be ready
@@ -267,10 +277,18 @@ class TranscodingService {
   List<String> _buildFfmpegArgs(TranscodingSession session) {
     final args = <String>[
       '-y',
+    ];
+
+    if (session.startTime > 0) {
+      args.addAll(['-ss', session.startTime.toString()]);
+    }
+
+    args.addAll([
       '-i',
       session.sourceUrl,
-    ]
+    ]);
 
+    args
       // Map video stream (copy, no re-encoding)
       ..addAll(['-map', '0:v:0'])
       // Map selected audio stream using absolute stream index
@@ -300,8 +318,15 @@ class TranscodingService {
 
   /// Build FFmpeg arguments for extracting subtitles
   List<String> _buildSubtitleArgs(TranscodingSession session) {
-    return [
+    final args = <String>[
       '-y',
+    ];
+
+    if (session.startTime > 0) {
+      args.addAll(['-ss', session.startTime.toString()]);
+    }
+
+    args.addAll([
       '-i',
       session.sourceUrl,
       '-map',
@@ -311,7 +336,9 @@ class TranscodingService {
       '-flush_packets',
       '1',
       session.subtitlesPath,
-    ];
+    ]);
+
+    return args;
   }
 
   /// Wait for the playlist file to be created

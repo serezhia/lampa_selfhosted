@@ -245,7 +245,7 @@
     // Track Selection UI
     // =========================================================================
 
-    function showAudioSelector(data, audioTracks, subtitleTracks) {
+    function showAudioSelector(data, audioTracks, subtitleTracks, duration) {
         if (!audioTracks.length) {
             notify('Не найдены аудиодорожки');
             return;
@@ -269,9 +269,9 @@
 
                 // If there are subtitles, ask for them too
                 if (subtitleTracks && subtitleTracks.length > 0) {
-                    showSubtitleSelector(data, item.track, subtitleTracks);
+                    showSubtitleSelector(data, item.track, subtitleTracks, duration);
                 } else {
-                    startTranscoding(data, item.track, null);
+                    startTranscoding(data, item.track, null, duration);
                 }
             },
             onBack: function () {
@@ -280,7 +280,7 @@
         });
     }
 
-    function showSubtitleSelector(data, audioTrack, subtitleTracks) {
+    function showSubtitleSelector(data, audioTrack, subtitleTracks, duration) {
         // Filter to only show text-based subtitles
         var textSubs = subtitleTracks.filter(function (track) {
             return isTextSubtitle(track);
@@ -294,7 +294,7 @@
             if (hasGraphical) {
                 notify('Только графические субтитры (PGS/VOBSUB) - не поддерживаются', 4000);
             }
-            startTranscoding(data, audioTrack, null);
+            startTranscoding(data, audioTrack, null, duration);
             return;
         }
 
@@ -316,7 +316,7 @@
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
-                startTranscoding(data, audioTrack, item.track);
+                startTranscoding(data, audioTrack, item.track, duration);
             },
             onBack: function () {
                 Lampa.Controller.toggle(lastController);
@@ -353,17 +353,25 @@
     // Transcoding Control
     // =========================================================================
 
-    // Note: Duration is dynamic for live HLS, we don't try to fix it
+    var seekOffset = 0;
+    var totalDuration = 0;
+    var seekTimeout = null;
+    var isVirtualTimelineInjected = false;
 
-    function startTranscoding(data, audioTrack, subtitleTrack) {
+    function startTranscoding(data, audioTrack, subtitleTrack, duration, startTime) {
         stopHeartbeat();
         ensureJobStopped(true);
 
-        showWait('Запуск транскодирования...');
+        startTime = startTime || 0;
+        seekOffset = startTime;
+        if (duration) totalDuration = duration;
+
+        showWait(startTime > 0 ? 'Перемотка...' : 'Запуск транскодирования...');
 
         var payload = {
             src: resolveMediaUrl(data),
-            audioIndex: audioTrack ? audioTrack.index : 0
+            audioIndex: audioTrack ? audioTrack.index : 0,
+            startTime: Math.floor(startTime)
         };
 
         if (subtitleTrack) {
@@ -384,7 +392,10 @@
 
                 activeJob = {
                     streamId: response.streamId,
-                    playlistUrl: response.playlistUrl
+                    playlistUrl: response.playlistUrl,
+                    data: data,
+                    audioTrack: audioTrack,
+                    subtitleTrack: subtitleTrack
                 };
 
                 // Start heartbeat
@@ -407,7 +418,38 @@
                 }
 
                 log('Playing transcoded stream:', playback.url);
-                Lampa.Player.play(playback);
+
+                if (startTime > 0 && Lampa.PlayerVideo && Lampa.PlayerVideo.video) {
+                    // If seeking, just update the source and play without recreating the video element
+                    var video = Lampa.PlayerVideo.video;
+
+                    if (Lampa.PlayerVideo.hls) {
+                        Lampa.PlayerVideo.hls.loadSource(playback.url);
+                        Lampa.PlayerVideo.hls.attachMedia(video);
+                    } else {
+                        video.src = playback.url;
+                        video.load();
+                    }
+                    video.play();
+
+                    // Force subtitle reload if needed
+                    if (response.subtitlesUrl) {
+                        var tracks = video.getElementsByTagName('track');
+                        for (var i = tracks.length - 1; i >= 0; i--) {
+                            video.removeChild(tracks[i]);
+                        }
+                        var track = document.createElement('track');
+                        track.kind = 'subtitles';
+                        track.label = 'Встроенные';
+                        track.src = addAuthToUrl(response.subtitlesUrl);
+                        track.default = true;
+                        video.appendChild(track);
+                    }
+                } else {
+                    // Initial playback
+                    Lampa.Player.play(playback);
+                    injectVirtualTimeline();
+                }
             },
             function (error) {
                 hideWait();
@@ -416,6 +458,80 @@
             },
             { timeout: 30000 }
         );
+    }
+
+    function injectVirtualTimeline() {
+        if (isVirtualTimelineInjected) return;
+
+        // Wait for video element to be created by Lampa
+        setTimeout(function () {
+            if (!Lampa.PlayerVideo || !Lampa.PlayerVideo.video) return;
+
+            var video = Lampa.PlayerVideo.video;
+            var origTime = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'currentTime');
+            var origDur = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'duration');
+
+            if (!origTime || !origDur) return;
+
+            Object.defineProperty(video, 'currentTime', {
+                get: function () {
+                    return seekOffset + origTime.get.call(this);
+                },
+                set: function (val) {
+                    // Check if val is within buffered range
+                    var isBuffered = false;
+                    var actualVal = val - seekOffset; // The time relative to the current HLS stream
+
+                    if (actualVal >= 0 && this.buffered) {
+                        for (var i = 0; i < this.buffered.length; i++) {
+                            if (actualVal >= this.buffered.start(i) && actualVal <= this.buffered.end(i)) {
+                                isBuffered = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isBuffered) {
+                        log('Seek within buffered range:', val);
+                        origTime.set.call(this, actualVal);
+                        return;
+                    }
+
+                    // Intercept seek
+                    log('Intercepted seek to unbuffered:', val);
+
+                    // Clear previous debounce
+                    if (seekTimeout) clearTimeout(seekTimeout);
+
+                    // Show loading immediately
+                    showWait('Перемотка...');
+
+                    // Debounce seek to avoid spamming backend
+                    seekTimeout = setTimeout(function () {
+                        if (activeJob) {
+                            startTranscoding(
+                                activeJob.data,
+                                activeJob.audioTrack,
+                                activeJob.subtitleTrack,
+                                totalDuration,
+                                val
+                            );
+                        }
+                    }, 500);
+                },
+                configurable: true
+            });
+
+            Object.defineProperty(video, 'duration', {
+                get: function () {
+                    return totalDuration || origDur.get.call(this);
+                },
+                configurable: true
+            });
+
+            isVirtualTimelineInjected = true;
+            log('Virtual timeline injected');
+        }, 500);
     }
 
     function startHeartbeat() {
@@ -513,9 +629,9 @@
 
             // If only one audio track, skip selection
             if (audioTracks.length === 1 && subtitleTracks.length === 0) {
-                startTranscoding(data, audioTracks[0], null);
+                startTranscoding(data, audioTracks[0], null, info.format ? info.format.duration : 0);
             } else {
-                showAudioSelector(data, audioTracks, subtitleTracks);
+                showAudioSelector(data, audioTracks, subtitleTracks, info.format ? info.format.duration : 0);
             }
         }, function (error) {
             hideWait();
@@ -526,11 +642,13 @@
 
     function handlePlayerDestroy() {
         log('Player destroy event');
+        isVirtualTimelineInjected = false;
         ensureJobStopped(true);
     }
 
     function handlePlayerBack() {
         log('Player back event');
+        isVirtualTimelineInjected = false;
         ensureJobStopped(true);
     }
 
