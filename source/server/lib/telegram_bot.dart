@@ -2249,8 +2249,12 @@ class TelegramBotService {
     final validPage = page.clamp(0, totalPages - 1);
     if (validPage != page) {
       // Рекурсивно вызываем с корректной страницей
-      await _showUsersList(ctx,
-          messageId: messageId, edit: edit, page: validPage);
+      await _showUsersList(
+        ctx,
+        messageId: messageId,
+        edit: edit,
+        page: validPage,
+      );
       return;
     }
 
@@ -2606,8 +2610,13 @@ class TelegramBotService {
       return;
     }
 
-    var text = '📝 *Заявки на регистрацию* ($totalCount)\n'
-        '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n';
+    keyboard = InlineKeyboard();
+
+    final buffer = StringBuffer();
+    buffer.write(
+      '📝 *Заявки на регистрацию* ($totalCount)\n'
+      '${totalPages > 1 ? "📄 Страница ${page + 1}/$totalPages\n" : ""}\n',
+    );
 
     for (final reg in pending) {
       final name = [reg.firstName, reg.lastName]
@@ -2615,15 +2624,19 @@ class TelegramBotService {
           .join(' ');
       final displayName = name.isNotEmpty ? name : reg.phone;
 
-      text += '👤 *${_escapeMarkdown(displayName)}*\n'
-          '📱 `${reg.phone}`\n'
-          '📅 ${_formatDate(reg.createdAt)}\n\n';
+      buffer.write(
+        '👤 *${_escapeMarkdown(displayName)}*\n'
+        '📱 `${reg.phone}`\n'
+        '📅 ${_formatDate(reg.createdAt)}\n\n',
+      );
 
       keyboard = keyboard
           .add('✅', 'approve_registration_${reg.id}')
           .add('❌', 'reject_registration_${reg.id}')
           .row();
     }
+
+    final text = buffer.toString();
 
     // Кнопки пагинации
     if (totalPages > 1) {
@@ -2737,10 +2750,10 @@ class TelegramBotService {
         .add('➕ Многоразовый код', 'create_invite_code_unlimited')
         .row();
 
-    var text = '🔐 *Инвайт-коды*\n\n';
+    final buffer = StringBuffer('🔐 *Инвайт-коды*\n\n');
 
     if (codes.isEmpty) {
-      text += 'Кодов пока нет.\n\n';
+      buffer.write('Кодов пока нет.\n\n');
     } else {
       for (final code in codes.take(10)) {
         final typeIcon = code.oneTime ? '1️⃣' : '♾';
@@ -2750,13 +2763,15 @@ class TelegramBotService {
             code.expiresAt != null && DateTime.now().isAfter(code.expiresAt!);
         final status = expired ? '❌' : (code.usesLeft > 0 ? '✅' : '❌');
 
-        text += '$status $typeIcon `${code.code}` $usesInfo\n';
+        buffer.write('$status $typeIcon `${code.code}` $usesInfo\n');
         keyboard = keyboard
             .add('🗑 ${code.code}', 'delete_invite_code_${code.id}')
             .row();
       }
-      text += '\n';
+      buffer.write('\n');
     }
+
+    final text = buffer.toString();
 
     keyboard = keyboard.add('« Назад', 'admin_registration');
 
@@ -2827,19 +2842,23 @@ class TelegramBotService {
 
     final keyboard = InlineKeyboard().add('❌ Отмена', 'admin_registration');
 
-    var text = '📱 *Разрешённые номера телефонов*\n\n';
+    final buffer = StringBuffer('📱 *Разрешённые номера телефонов*\n\n');
     if (currentPhones.isNotEmpty) {
-      text += 'Текущий список:\n';
+      buffer.write('Текущий список:\n');
       for (final phone in currentPhones) {
-        text += '• `$phone`\n';
+        buffer.write('• `$phone`\n');
       }
-      text += '\n';
+      buffer.write('\n');
     }
-    text += 'Отправьте список номеров телефонов, '
-        'каждый номер с новой строки или через запятую:\n\n'
-        'Пример:\n'
-        '`+79001234567`\n'
-        '`+79007654321`';
+    buffer.write(
+      'Отправьте список номеров телефонов, '
+      'каждый номер с новой строки или через запятую:\n\n'
+      'Пример:\n'
+      '`+79001234567`\n'
+      '`+79007654321`',
+    );
+
+    final text = buffer.toString();
 
     await ctx.api.editMessageText(
       ChatID(ctx.chat!.id),

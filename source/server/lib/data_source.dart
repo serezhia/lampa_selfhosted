@@ -550,7 +550,7 @@ class DataSource {
     final allowedPhones = await getAllowedPhones();
     if (allowedPhones.isEmpty) {
       print(
-          '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration');
+          '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration',);
       unawaited(stdout.flush());
       return false;
     }

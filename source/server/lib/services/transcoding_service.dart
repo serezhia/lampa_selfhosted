@@ -11,8 +11,8 @@ class TranscodingSession {
     required this.sourceUrl,
     required this.audioIndex,
     required this.outputDir,
+    required this.totalDuration,
     this.subtitleIndex,
-    this.startTime = 0,
   })  : startedAt = DateTime.now(),
         lastHeartbeat = DateTime.now();
 
@@ -20,14 +20,20 @@ class TranscodingSession {
   final String sourceUrl;
   final int audioIndex;
   final int? subtitleIndex;
-  final int startTime;
+  final double totalDuration;
   final String outputDir;
   final DateTime startedAt;
   DateTime lastHeartbeat;
   Process? ffmpegProcess;
   Process? subtitleProcess; // Separate process for subtitle extraction
   bool isReady = false;
+  bool isRestarting = false;
   String? error;
+
+  int currentFfmpegStartSegment = -1;
+  int lastRequestedSegment = 0;
+
+  static const double segmentDuration = 4;
 
   String get playlistPath => '$outputDir/playlist.m3u8';
   String get subtitlesPath => '$outputDir/subtitles.vtt';
@@ -195,7 +201,6 @@ class TranscodingService {
     required String sourceUrl,
     required int audioIndex,
     int? subtitleIndex,
-    int startTime = 0,
   }) async {
     final streamId = const Uuid().v4();
     final outputDir = '$_outputBaseDir/$streamId';
@@ -203,114 +208,235 @@ class TranscodingService {
     // Create output directory
     await Directory(outputDir).create(recursive: true);
 
+    // Get media info to find duration
+    final mediaInfo = await ffprobe(sourceUrl);
+    final duration = mediaInfo.format?.duration ?? 0.0;
+
+    if (duration <= 0) {
+      throw Exception('Could not determine video duration');
+    }
+
     final session = TranscodingSession(
       streamId: streamId,
       sourceUrl: sourceUrl,
       audioIndex: audioIndex,
       subtitleIndex: subtitleIndex,
-      startTime: startTime,
+      totalDuration: duration,
       outputDir: outputDir,
     );
 
     _sessions[streamId] = session;
 
-    print('[Transcoding] Starting session $streamId');
+    print('[Transcoding] Starting VOD session $streamId');
     print('[Transcoding] Source: $sourceUrl');
-    print('[Transcoding] Audio index: $audioIndex');
-    if (subtitleIndex != null) {
-      print('[Transcoding] Subtitle index: $subtitleIndex');
-    }
+    print('[Transcoding] Duration: $duration seconds');
 
-    // Build FFmpeg command
-    final args = _buildFfmpegArgs(session);
+    // Generate static playlist
+    _generateStaticPlaylist(session);
 
-    print('[Transcoding] FFmpeg args: ${args.join(' ')}');
+    // Start separate subtitle extraction process if requested
+    if (session.subtitleIndex != null) {
+      final subArgs = _buildSubtitleArgs(session);
+      print('[Transcoding] Subtitle FFmpeg args: ${subArgs.join(' ')}');
 
-    // Start FFmpeg process
-    try {
-      session.ffmpegProcess = await Process.start('ffmpeg', args);
+      session.subtitleProcess = await Process.start('ffmpeg', subArgs);
 
-      // Log stderr
-      session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
-        print('[FFmpeg] $line');
+      // Log subtitle process stderr
+      session.subtitleProcess!.stderr.transform(utf8.decoder).listen((line) {
+        // print('[FFmpeg-Subs] $line');
       });
 
-      // Start separate subtitle extraction process if requested
-      if (session.subtitleIndex != null) {
-        final subArgs = _buildSubtitleArgs(session);
-        print('[Transcoding] Subtitle FFmpeg args: ${subArgs.join(' ')}');
-
-        session.subtitleProcess = await Process.start('ffmpeg', subArgs);
-
-        // Log subtitle process stderr
-        session.subtitleProcess!.stderr.transform(utf8.decoder).listen((line) {
-          print('[FFmpeg-Subs] $line');
-        });
-
-        print('[Transcoding] Subtitle extraction started (runs in background)');
-
-        // We no longer wait for subtitle extraction to finish here.
-        // The GET request for subtitles.vtt will wait for it to complete.
-      }
-
-      // Wait for first segment to be ready
-      await _waitForPlaylist(session);
-
-      session.isReady = true;
-
-      print('[Transcoding] Session $streamId is ready');
-    } catch (e) {
-      session.error = e.toString();
-      print('[Transcoding] Error starting FFmpeg: $e');
-      await stopSession(streamId);
-      rethrow;
+      print('[Transcoding] Subtitle extraction started (runs in background)');
     }
+
+    session.isReady = true;
+    print('[Transcoding] Session $streamId is ready');
 
     return session;
   }
 
-  /// Build FFmpeg arguments for HLS transcoding
-  /// Simple live HLS - segments are never deleted, timeline grows dynamically
-  List<String> _buildFfmpegArgs(TranscodingSession session) {
-    final args = <String>[
-      '-y',
-    ];
+  void _generateStaticPlaylist(TranscodingSession session) {
+    final file = File(session.playlistPath);
+    final buffer = StringBuffer();
 
-    if (session.startTime > 0) {
-      args.addAll(['-ss', session.startTime.toString()]);
+    buffer.writeln('#EXTM3U');
+    buffer.writeln('#EXT-X-VERSION:3');
+    buffer.writeln(
+      '#EXT-X-TARGETDURATION:${TranscodingSession.segmentDuration.ceil()}',
+    );
+    buffer.writeln('#EXT-X-MEDIA-SEQUENCE:0');
+    buffer.writeln('#EXT-X-PLAYLIST-TYPE:VOD');
+
+    final totalSegments =
+        (session.totalDuration / TranscodingSession.segmentDuration).ceil();
+
+    for (var i = 0; i < totalSegments; i++) {
+      final isLast = i == totalSegments - 1;
+      final duration = isLast
+          ? session.totalDuration - (i * TranscodingSession.segmentDuration)
+          : TranscodingSession.segmentDuration;
+
+      buffer.writeln('#EXTINF:${duration.toStringAsFixed(6)},');
+      buffer.writeln('segment_${i.toString().padLeft(5, '0')}.ts');
     }
 
-    args.addAll([
-      '-i',
-      session.sourceUrl,
-    ]);
+    buffer.writeln('#EXT-X-ENDLIST');
+    file.writeAsStringSync(buffer.toString());
+  }
 
-    args
-      // Map video stream (copy, no re-encoding)
-      ..addAll(['-map', '0:v:0'])
-      // Map selected audio stream using absolute stream index
-      ..addAll(['-map', '0:${session.audioIndex}'])
-      // Video: copy (no transcoding)
-      ..addAll(['-c:v', 'copy'])
-      // Audio: transcode to AAC for browser compatibility
-      ..addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
+  Future<void> ensureSegmentAvailable(
+    String streamId,
+    int segmentNumber,
+  ) async {
+    final session = _sessions[streamId];
+    if (session == null) return;
 
-    // Simple HLS output - no segment deletion, playlist grows dynamically
-    args
-      ..addAll(['-f', 'hls'])
-      ..addAll(['-hls_time', '4'])
-      ..addAll(['-hls_list_size', '0']) // Keep all segments in playlist
-      ..addAll(['-hls_flags', 'independent_segments']) // No delete_segments!
-      ..addAll(
-        ['-hls_segment_filename', '${session.outputDir}/segment_%03d.ts'],
-      )
-      ..addAll(['-start_number', '0'])
-      ..add(session.playlistPath);
+    session.lastRequestedSegment = segmentNumber;
 
-    // Note: Subtitles are extracted in a separate process
-    // to avoid buffering issues with streaming sources
+    final segmentFile = File(
+      '${session.outputDir}/segment_${segmentNumber.toString().padLeft(5, '0')}.ts',
+    );
 
-    return args;
+    if (segmentFile.existsSync()) {
+      return;
+    }
+
+    // Wait if a restart is already in progress
+    while (session.isRestarting) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      if (segmentFile.existsSync()) return;
+    }
+
+    var needsRestart = false;
+
+    if (session.ffmpegProcess == null) {
+      needsRestart = true;
+    } else {
+      var highestSegment = _getHighestSegmentOnDisk(session);
+      if (highestSegment == -1) {
+        highestSegment = session.currentFfmpegStartSegment;
+      }
+
+      if (segmentNumber < session.currentFfmpegStartSegment) {
+        needsRestart = true;
+      } else if (segmentNumber > highestSegment + 10) {
+        needsRestart = true;
+      }
+    }
+
+    if (needsRestart) {
+      session.isRestarting = true;
+      try {
+        await _restartFfmpeg(session, segmentNumber);
+      } finally {
+        session.isRestarting = false;
+      }
+    }
+
+    await _waitForSegment(segmentFile);
+  }
+
+  int _getHighestSegmentOnDisk(TranscodingSession session) {
+    final dir = Directory(session.outputDir);
+    var highest = -1;
+    if (!dir.existsSync()) return highest;
+
+    try {
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.endsWith('.ts')) {
+          final match = RegExp(r'segment_(\d+)\.ts').firstMatch(entity.path);
+          if (match != null) {
+            final num = int.parse(match.group(1)!);
+            if (num > highest) highest = num;
+          }
+        }
+      }
+    } catch (e) {
+      print('[Transcoding] Error listing segments: $e');
+    }
+    return highest;
+  }
+
+  Future<void> _restartFfmpeg(
+    TranscodingSession session,
+    int startSegment,
+  ) async {
+    print(
+      '[Transcoding] Restarting FFmpeg for session ${session.streamId} at segment $startSegment',
+    );
+
+    if (session.ffmpegProcess != null) {
+      session.ffmpegProcess!.kill();
+      try {
+        await session.ffmpegProcess!.exitCode
+            .timeout(const Duration(seconds: 2));
+      } catch (_) {
+        session.ffmpegProcess!.kill(ProcessSignal.sigkill);
+      }
+      session.ffmpegProcess = null;
+    }
+
+    session.currentFfmpegStartSegment = startSegment;
+
+    final startTime = startSegment * TranscodingSession.segmentDuration;
+
+    final args = <String>['-y'];
+
+    args.addAll(['-ss', startTime.toStringAsFixed(3)]);
+    args.addAll(['-i', session.sourceUrl]);
+
+    args.addAll(['-copyts']); // Keep original timestamps for HLS
+
+    args.addAll(['-map', '0:v:0']);
+    args.addAll(['-map', '0:${session.audioIndex}']);
+    args.addAll(['-c:v', 'copy']);
+    args.addAll(['-c:a', 'aac', '-b:a', '192k', '-ac', '2']);
+
+    args.addAll(['-f', 'hls']);
+    args.addAll(
+      ['-hls_time', TranscodingSession.segmentDuration.toInt().toString()],
+    );
+    args.addAll(['-hls_list_size', '0']);
+    args.addAll(['-hls_flags', 'independent_segments+temp_file']);
+
+    args.addAll(
+      ['-hls_segment_filename', '${session.outputDir}/segment_%05d.ts'],
+    );
+    args.addAll(['-start_number', startSegment.toString()]);
+
+    args.add('${session.outputDir}/dummy_playlist.m3u8');
+
+    print('[Transcoding] FFmpeg args: ${args.join(' ')}');
+
+    session.ffmpegProcess = await Process.start('ffmpeg', args);
+    final currentProcess = session.ffmpegProcess;
+
+    session.ffmpegProcess!.stderr.transform(utf8.decoder).listen((line) {
+      // print('[FFmpeg] $line');
+    });
+
+    unawaited(
+      session.ffmpegProcess!.exitCode.then((code) {
+        print('[Transcoding] FFmpeg exited with code $code');
+        if (session.ffmpegProcess == currentProcess) {
+          session.ffmpegProcess = null;
+        }
+      }),
+    );
+  }
+
+  Future<void> _waitForSegment(File segmentFile) async {
+    var attempts = 0;
+    const maxAttempts = 60; // 30 seconds
+
+    while (attempts < maxAttempts) {
+      if (segmentFile.existsSync()) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      attempts++;
+    }
+    throw Exception('Timeout waiting for segment');
   }
 
   /// Build FFmpeg arguments for extracting subtitles
@@ -318,10 +444,6 @@ class TranscodingService {
     final args = <String>[
       '-y',
     ];
-
-    if (session.startTime > 0) {
-      args.addAll(['-ss', session.startTime.toString()]);
-    }
 
     args.addAll([
       '-i',
@@ -336,27 +458,6 @@ class TranscodingService {
     ]);
 
     return args;
-  }
-
-  /// Wait for the playlist file to be created
-  Future<void> _waitForPlaylist(TranscodingSession session) async {
-    final playlistFile = File(session.playlistPath);
-    var attempts = 0;
-    const maxAttempts = 60; // 30 seconds
-
-    while (attempts < maxAttempts) {
-      if (playlistFile.existsSync()) {
-        final content = playlistFile.readAsStringSync();
-        // Wait for at least one segment
-        if (content.contains('.ts')) {
-          return;
-        }
-      }
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      attempts++;
-    }
-
-    throw Exception('Timeout waiting for HLS playlist');
   }
 
   /// Get session by ID
@@ -432,12 +533,44 @@ class TranscodingService {
     for (final entry in _sessions.entries) {
       if (entry.value.isExpired) {
         expired.add(entry.key);
+      } else {
+        _cleanupOldSegments(entry.value);
       }
     }
 
     for (final streamId in expired) {
       print('[Transcoding] Session $streamId expired, cleaning up');
       stopSession(streamId);
+    }
+  }
+
+  void _cleanupOldSegments(TranscodingSession session) {
+    final dir = Directory(session.outputDir);
+    if (!dir.existsSync()) return;
+
+    final current = session.lastRequestedSegment;
+    // Keep segments within a window of [-20, +50] from the current segment
+    final minKeep = current - 20;
+    final maxKeep = current + 50;
+
+    try {
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.endsWith('.ts')) {
+          final match = RegExp(r'segment_(\d+)\.ts').firstMatch(entity.path);
+          if (match != null) {
+            final num = int.parse(match.group(1)!);
+            if (num < minKeep || num > maxKeep) {
+              try {
+                entity.deleteSync();
+              } catch (e) {
+                // Ignore deletion errors
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('[Transcoding] Error cleaning up segments: $e');
     }
   }
 
