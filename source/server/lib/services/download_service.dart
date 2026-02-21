@@ -61,6 +61,7 @@ class DownloadService {
         body: jsonEncode({
           'action': 'add',
           'link': item.magnetUri,
+          'title': item.title,
           'save_to_db': true,
         }),
       );
