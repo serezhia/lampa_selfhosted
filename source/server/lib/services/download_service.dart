@@ -198,7 +198,8 @@ class DownloadService {
         '-i', streamUrl,
         '-map', '0:v:0', // Map first video stream
         '-map', '0:a:0', // Map first audio stream
-        '-map', '0:s?', // Map subtitles if they exist
+        '-map',
+        '0:s:0?', // Map FIRST subtitle stream if it exists (HLS doesn't support multiple without master playlist)
         '-c:v', 'copy', // Copy video stream without re-encoding
         '-c:a', 'aac', // Convert audio to AAC for browser compatibility
         '-b:a', '128k',
