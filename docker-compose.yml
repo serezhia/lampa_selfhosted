@@ -51,6 +51,7 @@ services:
     volumes:
       - ./data/database:/app/data
       - ./data/transcoding:/app/transcoding
+      - ./data/library:/app/library
     environment:
       - PORT=8080
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}

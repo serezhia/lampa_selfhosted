@@ -15,6 +15,7 @@ Handler middleware(Handler handler) {
         context.request.uri.path.contains('/checker') ||
         context.request.uri.path.contains('/config') ||
         context.request.uri.path.contains('/transcoding/') ||
+        context.request.uri.path.contains('/library/play/') ||
         context.request.uri.path.contains('/jackett') ||
         context.request.uri.path.contains('/notice/')) {
       print('[MIDDLEWARE] Public endpoint, skipping auth');

@@ -4054,6 +4054,626 @@ class InviteCodesCompanion extends UpdateCompanion<InviteCode> {
   }
 }
 
+class $LibraryItemsTable extends LibraryItems
+    with TableInfo<$LibraryItemsTable, LibraryItem> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LibraryItemsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+      'id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES users (id)'));
+  static const VerificationMeta _tmdbIdMeta = const VerificationMeta('tmdbId');
+  @override
+  late final GeneratedColumn<int> tmdbId = GeneratedColumn<int>(
+      'tmdb_id', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _seasonMeta = const VerificationMeta('season');
+  @override
+  late final GeneratedColumn<int> season = GeneratedColumn<int>(
+      'season', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _episodeMeta =
+      const VerificationMeta('episode');
+  @override
+  late final GeneratedColumn<int> episode = GeneratedColumn<int>(
+      'episode', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+      'title', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _posterMeta = const VerificationMeta('poster');
+  @override
+  late final GeneratedColumn<String> poster = GeneratedColumn<String>(
+      'poster', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _magnetUriMeta =
+      const VerificationMeta('magnetUri');
+  @override
+  late final GeneratedColumn<String> magnetUri = GeneratedColumn<String>(
+      'magnet_uri', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _progressMeta =
+      const VerificationMeta('progress');
+  @override
+  late final GeneratedColumn<double> progress = GeneratedColumn<double>(
+      'progress', aliasedName, false,
+      type: DriftSqlType.double,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _errorMessageMeta =
+      const VerificationMeta('errorMessage');
+  @override
+  late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
+      'error_message', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        userId,
+        tmdbId,
+        type,
+        season,
+        episode,
+        title,
+        poster,
+        magnetUri,
+        status,
+        progress,
+        errorMessage,
+        createdAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'library_items';
+  @override
+  VerificationContext validateIntegrity(Insertable<LibraryItem> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('tmdb_id')) {
+      context.handle(_tmdbIdMeta,
+          tmdbId.isAcceptableOrUnknown(data['tmdb_id']!, _tmdbIdMeta));
+    } else if (isInserting) {
+      context.missing(_tmdbIdMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('season')) {
+      context.handle(_seasonMeta,
+          season.isAcceptableOrUnknown(data['season']!, _seasonMeta));
+    }
+    if (data.containsKey('episode')) {
+      context.handle(_episodeMeta,
+          episode.isAcceptableOrUnknown(data['episode']!, _episodeMeta));
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+          _titleMeta, title.isAcceptableOrUnknown(data['title']!, _titleMeta));
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('poster')) {
+      context.handle(_posterMeta,
+          poster.isAcceptableOrUnknown(data['poster']!, _posterMeta));
+    }
+    if (data.containsKey('magnet_uri')) {
+      context.handle(_magnetUriMeta,
+          magnetUri.isAcceptableOrUnknown(data['magnet_uri']!, _magnetUriMeta));
+    } else if (isInserting) {
+      context.missing(_magnetUriMeta);
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('progress')) {
+      context.handle(_progressMeta,
+          progress.isAcceptableOrUnknown(data['progress']!, _progressMeta));
+    }
+    if (data.containsKey('error_message')) {
+      context.handle(
+          _errorMessageMeta,
+          errorMessage.isAcceptableOrUnknown(
+              data['error_message']!, _errorMessageMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  LibraryItem map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LibraryItem(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+      tmdbId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}tmdb_id'])!,
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      season: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}season']),
+      episode: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}episode']),
+      title: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}title'])!,
+      poster: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}poster']),
+      magnetUri: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}magnet_uri'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      progress: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}progress'])!,
+      errorMessage: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}error_message']),
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $LibraryItemsTable createAlias(String alias) {
+    return $LibraryItemsTable(attachedDatabase, alias);
+  }
+}
+
+class LibraryItem extends DataClass implements Insertable<LibraryItem> {
+  final String id;
+  final String userId;
+  final int tmdbId;
+  final String type;
+  final int? season;
+  final int? episode;
+  final String title;
+  final String? poster;
+  final String magnetUri;
+  final String status;
+  final double progress;
+  final String? errorMessage;
+  final DateTime createdAt;
+  const LibraryItem(
+      {required this.id,
+      required this.userId,
+      required this.tmdbId,
+      required this.type,
+      this.season,
+      this.episode,
+      required this.title,
+      this.poster,
+      required this.magnetUri,
+      required this.status,
+      required this.progress,
+      this.errorMessage,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['tmdb_id'] = Variable<int>(tmdbId);
+    map['type'] = Variable<String>(type);
+    if (!nullToAbsent || season != null) {
+      map['season'] = Variable<int>(season);
+    }
+    if (!nullToAbsent || episode != null) {
+      map['episode'] = Variable<int>(episode);
+    }
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || poster != null) {
+      map['poster'] = Variable<String>(poster);
+    }
+    map['magnet_uri'] = Variable<String>(magnetUri);
+    map['status'] = Variable<String>(status);
+    map['progress'] = Variable<double>(progress);
+    if (!nullToAbsent || errorMessage != null) {
+      map['error_message'] = Variable<String>(errorMessage);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  LibraryItemsCompanion toCompanion(bool nullToAbsent) {
+    return LibraryItemsCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      tmdbId: Value(tmdbId),
+      type: Value(type),
+      season:
+          season == null && nullToAbsent ? const Value.absent() : Value(season),
+      episode: episode == null && nullToAbsent
+          ? const Value.absent()
+          : Value(episode),
+      title: Value(title),
+      poster:
+          poster == null && nullToAbsent ? const Value.absent() : Value(poster),
+      magnetUri: Value(magnetUri),
+      status: Value(status),
+      progress: Value(progress),
+      errorMessage: errorMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(errorMessage),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory LibraryItem.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LibraryItem(
+      id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      tmdbId: serializer.fromJson<int>(json['tmdbId']),
+      type: serializer.fromJson<String>(json['type']),
+      season: serializer.fromJson<int?>(json['season']),
+      episode: serializer.fromJson<int?>(json['episode']),
+      title: serializer.fromJson<String>(json['title']),
+      poster: serializer.fromJson<String?>(json['poster']),
+      magnetUri: serializer.fromJson<String>(json['magnetUri']),
+      status: serializer.fromJson<String>(json['status']),
+      progress: serializer.fromJson<double>(json['progress']),
+      errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String>(userId),
+      'tmdbId': serializer.toJson<int>(tmdbId),
+      'type': serializer.toJson<String>(type),
+      'season': serializer.toJson<int?>(season),
+      'episode': serializer.toJson<int?>(episode),
+      'title': serializer.toJson<String>(title),
+      'poster': serializer.toJson<String?>(poster),
+      'magnetUri': serializer.toJson<String>(magnetUri),
+      'status': serializer.toJson<String>(status),
+      'progress': serializer.toJson<double>(progress),
+      'errorMessage': serializer.toJson<String?>(errorMessage),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  LibraryItem copyWith(
+          {String? id,
+          String? userId,
+          int? tmdbId,
+          String? type,
+          Value<int?> season = const Value.absent(),
+          Value<int?> episode = const Value.absent(),
+          String? title,
+          Value<String?> poster = const Value.absent(),
+          String? magnetUri,
+          String? status,
+          double? progress,
+          Value<String?> errorMessage = const Value.absent(),
+          DateTime? createdAt}) =>
+      LibraryItem(
+        id: id ?? this.id,
+        userId: userId ?? this.userId,
+        tmdbId: tmdbId ?? this.tmdbId,
+        type: type ?? this.type,
+        season: season.present ? season.value : this.season,
+        episode: episode.present ? episode.value : this.episode,
+        title: title ?? this.title,
+        poster: poster.present ? poster.value : this.poster,
+        magnetUri: magnetUri ?? this.magnetUri,
+        status: status ?? this.status,
+        progress: progress ?? this.progress,
+        errorMessage:
+            errorMessage.present ? errorMessage.value : this.errorMessage,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  LibraryItem copyWithCompanion(LibraryItemsCompanion data) {
+    return LibraryItem(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      tmdbId: data.tmdbId.present ? data.tmdbId.value : this.tmdbId,
+      type: data.type.present ? data.type.value : this.type,
+      season: data.season.present ? data.season.value : this.season,
+      episode: data.episode.present ? data.episode.value : this.episode,
+      title: data.title.present ? data.title.value : this.title,
+      poster: data.poster.present ? data.poster.value : this.poster,
+      magnetUri: data.magnetUri.present ? data.magnetUri.value : this.magnetUri,
+      status: data.status.present ? data.status.value : this.status,
+      progress: data.progress.present ? data.progress.value : this.progress,
+      errorMessage: data.errorMessage.present
+          ? data.errorMessage.value
+          : this.errorMessage,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryItem(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('tmdbId: $tmdbId, ')
+          ..write('type: $type, ')
+          ..write('season: $season, ')
+          ..write('episode: $episode, ')
+          ..write('title: $title, ')
+          ..write('poster: $poster, ')
+          ..write('magnetUri: $magnetUri, ')
+          ..write('status: $status, ')
+          ..write('progress: $progress, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, tmdbId, type, season, episode,
+      title, poster, magnetUri, status, progress, errorMessage, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LibraryItem &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.tmdbId == this.tmdbId &&
+          other.type == this.type &&
+          other.season == this.season &&
+          other.episode == this.episode &&
+          other.title == this.title &&
+          other.poster == this.poster &&
+          other.magnetUri == this.magnetUri &&
+          other.status == this.status &&
+          other.progress == this.progress &&
+          other.errorMessage == this.errorMessage &&
+          other.createdAt == this.createdAt);
+}
+
+class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
+  final Value<String> id;
+  final Value<String> userId;
+  final Value<int> tmdbId;
+  final Value<String> type;
+  final Value<int?> season;
+  final Value<int?> episode;
+  final Value<String> title;
+  final Value<String?> poster;
+  final Value<String> magnetUri;
+  final Value<String> status;
+  final Value<double> progress;
+  final Value<String?> errorMessage;
+  final Value<DateTime> createdAt;
+  final Value<int> rowid;
+  const LibraryItemsCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.tmdbId = const Value.absent(),
+    this.type = const Value.absent(),
+    this.season = const Value.absent(),
+    this.episode = const Value.absent(),
+    this.title = const Value.absent(),
+    this.poster = const Value.absent(),
+    this.magnetUri = const Value.absent(),
+    this.status = const Value.absent(),
+    this.progress = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LibraryItemsCompanion.insert({
+    required String id,
+    required String userId,
+    required int tmdbId,
+    required String type,
+    this.season = const Value.absent(),
+    this.episode = const Value.absent(),
+    required String title,
+    this.poster = const Value.absent(),
+    required String magnetUri,
+    required String status,
+    this.progress = const Value.absent(),
+    this.errorMessage = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  })  : id = Value(id),
+        userId = Value(userId),
+        tmdbId = Value(tmdbId),
+        type = Value(type),
+        title = Value(title),
+        magnetUri = Value(magnetUri),
+        status = Value(status);
+  static Insertable<LibraryItem> custom({
+    Expression<String>? id,
+    Expression<String>? userId,
+    Expression<int>? tmdbId,
+    Expression<String>? type,
+    Expression<int>? season,
+    Expression<int>? episode,
+    Expression<String>? title,
+    Expression<String>? poster,
+    Expression<String>? magnetUri,
+    Expression<String>? status,
+    Expression<double>? progress,
+    Expression<String>? errorMessage,
+    Expression<DateTime>? createdAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (tmdbId != null) 'tmdb_id': tmdbId,
+      if (type != null) 'type': type,
+      if (season != null) 'season': season,
+      if (episode != null) 'episode': episode,
+      if (title != null) 'title': title,
+      if (poster != null) 'poster': poster,
+      if (magnetUri != null) 'magnet_uri': magnetUri,
+      if (status != null) 'status': status,
+      if (progress != null) 'progress': progress,
+      if (errorMessage != null) 'error_message': errorMessage,
+      if (createdAt != null) 'created_at': createdAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LibraryItemsCompanion copyWith(
+      {Value<String>? id,
+      Value<String>? userId,
+      Value<int>? tmdbId,
+      Value<String>? type,
+      Value<int?>? season,
+      Value<int?>? episode,
+      Value<String>? title,
+      Value<String?>? poster,
+      Value<String>? magnetUri,
+      Value<String>? status,
+      Value<double>? progress,
+      Value<String?>? errorMessage,
+      Value<DateTime>? createdAt,
+      Value<int>? rowid}) {
+    return LibraryItemsCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      tmdbId: tmdbId ?? this.tmdbId,
+      type: type ?? this.type,
+      season: season ?? this.season,
+      episode: episode ?? this.episode,
+      title: title ?? this.title,
+      poster: poster ?? this.poster,
+      magnetUri: magnetUri ?? this.magnetUri,
+      status: status ?? this.status,
+      progress: progress ?? this.progress,
+      errorMessage: errorMessage ?? this.errorMessage,
+      createdAt: createdAt ?? this.createdAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (tmdbId.present) {
+      map['tmdb_id'] = Variable<int>(tmdbId.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (season.present) {
+      map['season'] = Variable<int>(season.value);
+    }
+    if (episode.present) {
+      map['episode'] = Variable<int>(episode.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (poster.present) {
+      map['poster'] = Variable<String>(poster.value);
+    }
+    if (magnetUri.present) {
+      map['magnet_uri'] = Variable<String>(magnetUri.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (progress.present) {
+      map['progress'] = Variable<double>(progress.value);
+    }
+    if (errorMessage.present) {
+      map['error_message'] = Variable<String>(errorMessage.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LibraryItemsCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('tmdbId: $tmdbId, ')
+          ..write('type: $type, ')
+          ..write('season: $season, ')
+          ..write('episode: $episode, ')
+          ..write('title: $title, ')
+          ..write('poster: $poster, ')
+          ..write('magnetUri: $magnetUri, ')
+          ..write('status: $status, ')
+          ..write('progress: $progress, ')
+          ..write('errorMessage: $errorMessage, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4072,6 +4692,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $PendingRegistrationsTable pendingRegistrations =
       $PendingRegistrationsTable(this);
   late final $InviteCodesTable inviteCodes = $InviteCodesTable(this);
+  late final $LibraryItemsTable libraryItems = $LibraryItemsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4087,7 +4708,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         notices,
         settings,
         pendingRegistrations,
-        inviteCodes
+        inviteCodes,
+        libraryItems
       ];
 }
 
@@ -4146,6 +4768,20 @@ final class $$UsersTableReferences
         .filter((f) => f.userId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_devicesRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+
+  static MultiTypedResultKey<$LibraryItemsTable, List<LibraryItem>>
+      _libraryItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+          db.libraryItems,
+          aliasName: $_aliasNameGenerator(db.users.id, db.libraryItems.userId));
+
+  $$LibraryItemsTableProcessedTableManager get libraryItemsRefs {
+    final manager = $$LibraryItemsTableTableManager($_db, $_db.libraryItems)
+        .filter((f) => f.userId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_libraryItemsRefsTable($_db));
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: cache));
   }
@@ -4223,6 +4859,27 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
             $$DevicesTableFilterComposer(
               $db: $db,
               $table: $db.devices,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+
+  Expression<bool> libraryItemsRefs(
+      Expression<bool> Function($$LibraryItemsTableFilterComposer f) f) {
+    final $$LibraryItemsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.libraryItems,
+        getReferencedColumn: (t) => t.userId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LibraryItemsTableFilterComposer(
+              $db: $db,
+              $table: $db.libraryItems,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -4353,6 +5010,27 @@ class $$UsersTableAnnotationComposer
             ));
     return f(composer);
   }
+
+  Expression<T> libraryItemsRefs<T extends Object>(
+      Expression<T> Function($$LibraryItemsTableAnnotationComposer a) f) {
+    final $$LibraryItemsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.libraryItems,
+        getReferencedColumn: (t) => t.userId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$LibraryItemsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.libraryItems,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$UsersTableTableManager extends RootTableManager<
@@ -4366,7 +5044,8 @@ class $$UsersTableTableManager extends RootTableManager<
     $$UsersTableUpdateCompanionBuilder,
     (User, $$UsersTableReferences),
     User,
-    PrefetchHooks Function({bool profilesRefs, bool devicesRefs})> {
+    PrefetchHooks Function(
+        {bool profilesRefs, bool devicesRefs, bool libraryItemsRefs})> {
   $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
       : super(TableManagerState(
           db: db,
@@ -4433,12 +5112,16 @@ class $$UsersTableTableManager extends RootTableManager<
               .map((e) =>
                   (e.readTable(table), $$UsersTableReferences(db, table, e)))
               .toList(),
-          prefetchHooksCallback: ({profilesRefs = false, devicesRefs = false}) {
+          prefetchHooksCallback: (
+              {profilesRefs = false,
+              devicesRefs = false,
+              libraryItemsRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (profilesRefs) db.profiles,
-                if (devicesRefs) db.devices
+                if (devicesRefs) db.devices,
+                if (libraryItemsRefs) db.libraryItems
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
@@ -4464,6 +5147,18 @@ class $$UsersTableTableManager extends RootTableManager<
                         referencedItemsForCurrentItem: (item,
                                 referencedItems) =>
                             referencedItems.where((e) => e.userId == item.id),
+                        typedResults: items),
+                  if (libraryItemsRefs)
+                    await $_getPrefetchedData<User, $UsersTable, LibraryItem>(
+                        currentTable: table,
+                        referencedTable:
+                            $$UsersTableReferences._libraryItemsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$UsersTableReferences(db, table, p0)
+                                .libraryItemsRefs,
+                        referencedItemsForCurrentItem: (item,
+                                referencedItems) =>
+                            referencedItems.where((e) => e.userId == item.id),
                         typedResults: items)
                 ];
               },
@@ -4483,7 +5178,8 @@ typedef $$UsersTableProcessedTableManager = ProcessedTableManager<
     $$UsersTableUpdateCompanionBuilder,
     (User, $$UsersTableReferences),
     User,
-    PrefetchHooks Function({bool profilesRefs, bool devicesRefs})>;
+    PrefetchHooks Function(
+        {bool profilesRefs, bool devicesRefs, bool libraryItemsRefs})>;
 typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<int> id,
   required String userId,
@@ -7275,6 +7971,401 @@ typedef $$InviteCodesTableProcessedTableManager = ProcessedTableManager<
     (InviteCode, BaseReferences<_$AppDatabase, $InviteCodesTable, InviteCode>),
     InviteCode,
     PrefetchHooks Function()>;
+typedef $$LibraryItemsTableCreateCompanionBuilder = LibraryItemsCompanion
+    Function({
+  required String id,
+  required String userId,
+  required int tmdbId,
+  required String type,
+  Value<int?> season,
+  Value<int?> episode,
+  required String title,
+  Value<String?> poster,
+  required String magnetUri,
+  required String status,
+  Value<double> progress,
+  Value<String?> errorMessage,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+typedef $$LibraryItemsTableUpdateCompanionBuilder = LibraryItemsCompanion
+    Function({
+  Value<String> id,
+  Value<String> userId,
+  Value<int> tmdbId,
+  Value<String> type,
+  Value<int?> season,
+  Value<int?> episode,
+  Value<String> title,
+  Value<String?> poster,
+  Value<String> magnetUri,
+  Value<String> status,
+  Value<double> progress,
+  Value<String?> errorMessage,
+  Value<DateTime> createdAt,
+  Value<int> rowid,
+});
+
+final class $$LibraryItemsTableReferences
+    extends BaseReferences<_$AppDatabase, $LibraryItemsTable, LibraryItem> {
+  $$LibraryItemsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $UsersTable _userIdTable(_$AppDatabase db) => db.users
+      .createAlias($_aliasNameGenerator(db.libraryItems.userId, db.users.id));
+
+  $$UsersTableProcessedTableManager get userId {
+    final $_column = $_itemColumn<String>('user_id')!;
+
+    final manager = $$UsersTableTableManager($_db, $_db.users)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_userIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$LibraryItemsTableFilterComposer
+    extends Composer<_$AppDatabase, $LibraryItemsTable> {
+  $$LibraryItemsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get tmdbId => $composableBuilder(
+      column: $table.tmdbId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get season => $composableBuilder(
+      column: $table.season, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get episode => $composableBuilder(
+      column: $table.episode, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get poster => $composableBuilder(
+      column: $table.poster, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get magnetUri => $composableBuilder(
+      column: $table.magnetUri, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  $$UsersTableFilterComposer get userId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableFilterComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LibraryItemsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LibraryItemsTable> {
+  $$LibraryItemsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get tmdbId => $composableBuilder(
+      column: $table.tmdbId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get season => $composableBuilder(
+      column: $table.season, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get episode => $composableBuilder(
+      column: $table.episode, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get title => $composableBuilder(
+      column: $table.title, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get poster => $composableBuilder(
+      column: $table.poster, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get magnetUri => $composableBuilder(
+      column: $table.magnetUri, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get progress => $composableBuilder(
+      column: $table.progress, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  $$UsersTableOrderingComposer get userId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableOrderingComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LibraryItemsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LibraryItemsTable> {
+  $$LibraryItemsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<int> get tmdbId =>
+      $composableBuilder(column: $table.tmdbId, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<int> get season =>
+      $composableBuilder(column: $table.season, builder: (column) => column);
+
+  GeneratedColumn<int> get episode =>
+      $composableBuilder(column: $table.episode, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get poster =>
+      $composableBuilder(column: $table.poster, builder: (column) => column);
+
+  GeneratedColumn<String> get magnetUri =>
+      $composableBuilder(column: $table.magnetUri, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<double> get progress =>
+      $composableBuilder(column: $table.progress, builder: (column) => column);
+
+  GeneratedColumn<String> get errorMessage => $composableBuilder(
+      column: $table.errorMessage, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$UsersTableAnnotationComposer get userId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableAnnotationComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$LibraryItemsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LibraryItemsTable,
+    LibraryItem,
+    $$LibraryItemsTableFilterComposer,
+    $$LibraryItemsTableOrderingComposer,
+    $$LibraryItemsTableAnnotationComposer,
+    $$LibraryItemsTableCreateCompanionBuilder,
+    $$LibraryItemsTableUpdateCompanionBuilder,
+    (LibraryItem, $$LibraryItemsTableReferences),
+    LibraryItem,
+    PrefetchHooks Function({bool userId})> {
+  $$LibraryItemsTableTableManager(_$AppDatabase db, $LibraryItemsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LibraryItemsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LibraryItemsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LibraryItemsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> id = const Value.absent(),
+            Value<String> userId = const Value.absent(),
+            Value<int> tmdbId = const Value.absent(),
+            Value<String> type = const Value.absent(),
+            Value<int?> season = const Value.absent(),
+            Value<int?> episode = const Value.absent(),
+            Value<String> title = const Value.absent(),
+            Value<String?> poster = const Value.absent(),
+            Value<String> magnetUri = const Value.absent(),
+            Value<String> status = const Value.absent(),
+            Value<double> progress = const Value.absent(),
+            Value<String?> errorMessage = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LibraryItemsCompanion(
+            id: id,
+            userId: userId,
+            tmdbId: tmdbId,
+            type: type,
+            season: season,
+            episode: episode,
+            title: title,
+            poster: poster,
+            magnetUri: magnetUri,
+            status: status,
+            progress: progress,
+            errorMessage: errorMessage,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String id,
+            required String userId,
+            required int tmdbId,
+            required String type,
+            Value<int?> season = const Value.absent(),
+            Value<int?> episode = const Value.absent(),
+            required String title,
+            Value<String?> poster = const Value.absent(),
+            required String magnetUri,
+            required String status,
+            Value<double> progress = const Value.absent(),
+            Value<String?> errorMessage = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LibraryItemsCompanion.insert(
+            id: id,
+            userId: userId,
+            tmdbId: tmdbId,
+            type: type,
+            season: season,
+            episode: episode,
+            title: title,
+            poster: poster,
+            magnetUri: magnetUri,
+            status: status,
+            progress: progress,
+            errorMessage: errorMessage,
+            createdAt: createdAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$LibraryItemsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({userId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (userId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.userId,
+                    referencedTable:
+                        $$LibraryItemsTableReferences._userIdTable(db),
+                    referencedColumn:
+                        $$LibraryItemsTableReferences._userIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$LibraryItemsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LibraryItemsTable,
+    LibraryItem,
+    $$LibraryItemsTableFilterComposer,
+    $$LibraryItemsTableOrderingComposer,
+    $$LibraryItemsTableAnnotationComposer,
+    $$LibraryItemsTableCreateCompanionBuilder,
+    $$LibraryItemsTableUpdateCompanionBuilder,
+    (LibraryItem, $$LibraryItemsTableReferences),
+    LibraryItem,
+    PrefetchHooks Function({bool userId})>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7301,4 +8392,6 @@ class $AppDatabaseManager {
       $$PendingRegistrationsTableTableManager(_db, _db.pendingRegistrations);
   $$InviteCodesTableTableManager get inviteCodes =>
       $$InviteCodesTableTableManager(_db, _db.inviteCodes);
+  $$LibraryItemsTableTableManager get libraryItems =>
+      $$LibraryItemsTableTableManager(_db, _db.libraryItems);
 }

@@ -86,7 +86,7 @@
                 console.log('[Modification] Найдено плагинов:', manifest.plugins.length);
 
                 // Сортируем: сначала modification (если есть), потом остальные в определённом порядке
-                var loadOrder = ['auth', 'default_settings', 'jackett_proxy', 'custom_notices', 'sync_player', 'transcoding', 'online'];
+                var loadOrder = ['auth', 'default_settings', 'jackett_proxy', 'custom_notices', 'sync_player', 'transcoding', 'local_library', 'online'];
 
                 var sortedPlugins = manifest.plugins.slice().sort(function (a, b) {
                     var aIndex = loadOrder.indexOf(a.name);
@@ -122,6 +122,7 @@
                     { name: 'custom_notices', url: '/plugins/custom_notices.js' },
                     { name: 'sync_player', url: '/plugins/sync_player.js' },
                     { name: 'transcoding', url: '/plugins/transcoding.js' },
+                    { name: 'local_library', url: '/plugins/local_library.js' },
                     { name: 'online', url: '/plugins/online.js' }
                 ];
                 loadPluginsSequentially(fallbackPlugins);

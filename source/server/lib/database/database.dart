@@ -167,6 +167,28 @@ class InviteCodes extends Table {
   DateTimeColumn get expiresAt => dateTime().named('expires_at').nullable()();
 }
 
+/// Таблица локальной библиотеки (загрузки)
+class LibraryItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text().named('user_id').references(Users, #id)();
+  IntColumn get tmdbId => integer().named('tmdb_id')();
+  TextColumn get type => text()(); // 'movie' or 'tv'
+  IntColumn get season => integer().nullable()();
+  IntColumn get episode => integer().nullable()();
+  TextColumn get title => text()();
+  TextColumn get poster => text().nullable()();
+  TextColumn get magnetUri => text().named('magnet_uri')();
+  TextColumn get status =>
+      text()(); // 'pending', 'downloading', 'transcoding', 'ready', 'error'
+  RealColumn get progress => real().withDefault(const Constant(0))();
+  TextColumn get errorMessage => text().named('error_message').nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DriftDatabase(
   tables: [
     Users,
@@ -180,6 +202,7 @@ class InviteCodes extends Table {
     Settings,
     PendingRegistrations,
     InviteCodes,
+    LibraryItems,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -188,7 +211,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration {
@@ -207,6 +230,9 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(settings);
           await m.createTable(pendingRegistrations);
           await m.createTable(inviteCodes);
+        }
+        if (from < 4) {
+          await m.createTable(libraryItems);
         }
       },
     );
@@ -608,10 +634,32 @@ class AppDatabase extends _$AppDatabase {
       // Удаляем устройства
       await (delete(devices)..where((d) => d.userId.equals(userId))).go();
 
+      // Удаляем загрузки
+      await (delete(libraryItems)..where((l) => l.userId.equals(userId))).go();
+
       // Удаляем пользователя
       await (delete(users)..where((u) => u.id.equals(userId))).go();
     });
   }
+
+  // =============== Library Items ===============
+
+  Future<List<LibraryItem>> getLibraryItemsByUserId(String userId) =>
+      (select(libraryItems)..where((l) => l.userId.equals(userId))).get();
+
+  Future<LibraryItem?> getLibraryItemById(String id) =>
+      (select(libraryItems)..where((l) => l.id.equals(id))).getSingleOrNull();
+
+  Future<LibraryItem> insertLibraryItem(LibraryItemsCompanion item) async {
+    await into(libraryItems).insert(item);
+    return (await getLibraryItemById(item.id.value))!;
+  }
+
+  Future<void> updateLibraryItem(LibraryItem item) =>
+      update(libraryItems).replace(item);
+
+  Future<void> deleteLibraryItem(String id) =>
+      (delete(libraryItems)..where((l) => l.id.equals(id))).go();
 }
 
 LazyDatabase _openConnection() {
