@@ -22,7 +22,7 @@
         if ($('.menu__text:contains("Моя библиотека")').length) return; // Защита от дублирования
 
         var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
-        
+
         Lampa.Menu.addButton(svg, 'Моя библиотека', function () {
             Lampa.Activity.push({
                 url: '',
@@ -42,13 +42,13 @@
         comp.use({
             onCreate: function () {
                 var _this = this;
-                
+
                 // Запрашиваем список загрузок
                 var url = Lampa.Storage.get('server_url', '') + '/api/library/list';
 
                 network.silent(url, function (data) {
                     if (data && data.success && data.items) {
-                        var items = data.items.map(function(item) {
+                        var items = data.items.map(function (item) {
                             // Преобразуем в формат карточки Lampa
                             var card = {
                                 id: item.tmdb_id,
@@ -79,15 +79,15 @@
                                 // Заглушка, если постера нет
                                 card.img = 'https://via.placeholder.com/300x450/333333/ffffff?text=' + encodeURIComponent(item.title.substring(0, 20));
                             }
-                            
+
                             if (item.type === 'tv') {
                                 card.title = item.title + ' (S' + (item.season || 1) + 'E' + (item.episode || 1) + ')';
                                 card.name = card.title;
                             }
-                            
+
                             return card;
                         });
-                        
+
                         if (items.length > 0) {
                             _this.build({
                                 results: items,
@@ -109,11 +109,11 @@
             },
             onInstance: function (item, data) {
                 item.use({
-                    onCreate: function() {
+                    onCreate: function () {
                         // Добавляем статус на карточку
                         var statusText = '';
                         var statusClass = '';
-                        
+
                         if (data.library_status === 'pending') {
                             if (data.library_progress > 0) {
                                 statusText = 'В очереди ' + Math.round(data.library_progress) + '%';
@@ -137,11 +137,11 @@
 
                         if (statusText) {
                             var statusHtml = $('<div class="library-status ' + statusClass + '" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.8);padding:4px 8px;border-radius:5px;font-size:12px;font-weight:bold;z-index:10;color:#fff;">' + statusText + '</div>');
-                            
+
                             // В новом API Lampa DOM-элемент карточки доступен через this.html или this.card
                             var cardEl = this.html || $(this.card);
                             var viewEl = cardEl.find('.card__view');
-                            
+
                             if (viewEl.length) {
                                 viewEl.append(statusHtml);
                             } else {
@@ -150,7 +150,7 @@
 
                             // Если статус не "Готово" и не "Ошибка", запускаем таймер для обновления
                             if (data.library_status !== 'ready' && data.library_status !== 'error') {
-                                var updateTimer = setInterval(function() {
+                                var updateTimer = setInterval(function () {
                                     // Проверяем, существует ли еще карточка в DOM
                                     if (!cardEl.closest('body').length) {
                                         clearInterval(updateTimer);
@@ -160,7 +160,7 @@
                                     var url = Lampa.Storage.get('server_url', '') + '/api/library/list';
                                     network.silent(url, function (res) {
                                         if (res && res.success && res.items) {
-                                            var updatedItem = res.items.find(function(i) { return i.id === data.library_id; });
+                                            var updatedItem = res.items.find(function (i) { return i.id === data.library_id; });
                                             if (updatedItem) {
                                                 var newText = '';
                                                 if (updatedItem.status === 'pending') {
@@ -176,7 +176,7 @@
                                                     newText = 'Ошибка';
                                                     clearInterval(updateTimer);
                                                 }
-                                                
+
                                                 if (newText) {
                                                     statusHtml.text(newText);
                                                     // Обновляем данные в самой карточке, чтобы onEnter работал правильно
@@ -199,12 +199,12 @@
                         if (data.library_status === 'ready') {
                             // Воспроизводим
                             var playUrl = Lampa.Storage.get('server_url', '') + '/api/library/play/' + data.library_id + '/playlist.m3u8';
-                            
+
                             var video = {
                                 title: data.title,
                                 url: playUrl
                             };
-                            
+
                             Lampa.Player.play(video);
                             Lampa.Player.playlist([video]);
                         } else {
@@ -219,7 +219,7 @@
                                 ],
                                 onSelect: function (a) {
                                     if (a.action === 'delete') {
-                                        deleteItem(data.library_id, function() {
+                                        deleteItem(data.library_id, function () {
                                             Lampa.Activity.replace(); // Перезагружаем страницу
                                         });
                                     }
@@ -264,7 +264,7 @@
     Lampa.Listener.follow('torrent_file', function (e) {
         if (e.type === 'onlong') {
             // Проверяем, нет ли уже такой кнопки
-            if (e.menu.filter(function(m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
+            if (e.menu.filter(function (m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
 
             e.menu.push({
                 title: 'Скачать на сервер',
@@ -273,7 +273,7 @@
                     var activity = active.activity || {};
                     var movie = (e.params && e.params.movie) ? e.params.movie : (activity.movie || active.movie || {});
                     var file = e.element || {};
-                    
+
                     var data = {
                         tmdb_id: movie.id || 0,
                         type: movie.name ? 'tv' : 'movie',
@@ -283,7 +283,15 @@
                         season: file.season || 0,
                         episode: file.episode || 0
                     };
-                    
+
+                    // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
+                    if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
+                        var match = data.magnet_uri.match(/link=([^&]+)/);
+                        if (match && match[1]) {
+                            data.magnet_uri = decodeURIComponent(match[1]);
+                        }
+                    }
+
                     if (!data.magnet_uri) {
                         Lampa.Noty.show('Не удалось получить ссылку на торрент');
                         return;
@@ -313,7 +321,7 @@
     Lampa.Listener.follow('torrent', function (e) {
         if (e.type === 'onlong') {
             // Проверяем, нет ли уже такой кнопки
-            if (e.menu.filter(function(m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
+            if (e.menu.filter(function (m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
 
             e.menu.push({
                 title: 'Скачать на сервер',
@@ -322,7 +330,7 @@
                     var activity = active.activity || {};
                     var movie = (e.params && e.params.movie) ? e.params.movie : (activity.movie || active.movie || {});
                     var file = e.element || {};
-                    
+
                     var data = {
                         tmdb_id: movie.id || 0,
                         type: movie.name ? 'tv' : 'movie',
@@ -332,7 +340,15 @@
                         season: file.season || 0,
                         episode: file.episode || 0
                     };
-                    
+
+                    // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
+                    if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
+                        var match = data.magnet_uri.match(/link=([^&]+)/);
+                        if (match && match[1]) {
+                            data.magnet_uri = decodeURIComponent(match[1]);
+                        }
+                    }
+
                     if (!data.magnet_uri) {
                         Lampa.Noty.show('Не удалось получить ссылку на торрент');
                         return;

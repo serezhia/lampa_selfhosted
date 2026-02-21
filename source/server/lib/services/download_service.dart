@@ -182,13 +182,25 @@ class DownloadService {
       final file = File(savePath);
 
       final streamUrl =
-          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&save=true';
+          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&play=true';
 
+      print('[DownloadService] Starting stream from: $streamUrl');
+
+      final client = http.Client();
       final request = http.Request('GET', Uri.parse(streamUrl));
-      final response = await http.Client().send(request);
+      final response = await client.send(request);
 
       if (response.statusCode != 200) {
         throw Exception('Failed to start stream: ${response.statusCode}');
+      }
+
+      final contentType = response.headers['content-type'] ?? '';
+      if (contentType.contains('application/json') ||
+          contentType.contains('text/plain')) {
+        final errorBytes = await response.stream.first;
+        final errorBody = utf8.decode(errorBytes);
+        throw Exception(
+            'TorrServer returned text/json instead of video: $errorBody');
       }
 
       final sink = file.openWrite();
@@ -209,24 +221,47 @@ class DownloadService {
             final progress = (downloadedBytes / fileSize) * 100;
             unawaited(
               DataSource.instance.db.updateLibraryItem(
-                item.copyWith(progress: progress),
+                item.copyWith(progress: progress.clamp(0, 100)),
               ),
             );
           }
         },
         onDone: () async {
           await sink.close();
+          client.close();
           _activeDownloads.remove(item.id);
 
-          // Update status to transcoding
-          await DataSource.instance.db.updateLibraryItem(
-            item.copyWith(status: 'transcoding', progress: 100),
-          );
+          print(
+              '[DownloadService] Stream done. Downloaded: $downloadedBytes / $fileSize bytes');
+
+          if (downloadedBytes == 0) {
+            await DataSource.instance.db.updateLibraryItem(
+              item.copyWith(
+                status: 'error',
+                errorMessage: const drift.Value(
+                    'Downloaded 0 bytes. Stream closed prematurely.'),
+              ),
+            );
+          } else if (fileSize > 0 && downloadedBytes < fileSize) {
+            await DataSource.instance.db.updateLibraryItem(
+              item.copyWith(
+                status: 'error',
+                errorMessage: drift.Value(
+                    'Download incomplete: $downloadedBytes / $fileSize bytes.'),
+              ),
+            );
+          } else {
+            // Update status to transcoding
+            await DataSource.instance.db.updateLibraryItem(
+              item.copyWith(status: 'transcoding', progress: 100),
+            );
+          }
 
           completer.complete();
         },
         onError: (Object e) async {
           await sink.close();
+          client.close();
           _activeDownloads.remove(item.id);
           throw Exception('Download stream error: $e');
         },
