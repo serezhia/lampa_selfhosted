@@ -94,7 +94,17 @@ class DownloadService {
         );
 
         if (getResponse.statusCode == 200) {
-          final torrents = jsonDecode(getResponse.body) as List<dynamic>?;
+          final decoded = jsonDecode(getResponse.body);
+
+          // TorrServer might return a single object or a list depending on the version/action
+          List<dynamic>? torrents;
+          if (decoded is List) {
+            torrents = decoded;
+          } else if (decoded is Map<String, dynamic>) {
+            // Sometimes it returns a single torrent object directly
+            torrents = [decoded];
+          }
+
           if (torrents != null && torrents.isNotEmpty) {
             final t = torrents.first as Map<String, dynamic>;
             if (t['file_stats'] != null &&
