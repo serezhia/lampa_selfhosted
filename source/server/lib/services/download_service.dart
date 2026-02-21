@@ -182,7 +182,7 @@ class DownloadService {
       final file = File(savePath);
 
       final streamUrl =
-          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&play';
+          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&save=true';
 
       final request = http.Request('GET', Uri.parse(streamUrl));
       final response = await http.Client().send(request);

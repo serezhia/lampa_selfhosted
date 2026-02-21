@@ -54,9 +54,6 @@
                                 id: item.tmdb_id,
                                 title: item.title,
                                 name: item.title,
-                                poster: item.poster,
-                                poster_path: item.poster,
-                                background_image: item.poster,
                                 type: item.type,
                                 media_type: item.type,
                                 library_id: item.id,
@@ -69,6 +66,19 @@
                                 first_air_date: '2025',
                                 vote_average: 0
                             };
+
+                            // Правильная обработка постеров для Lampa
+                            if (item.poster && item.poster.indexOf('/') === 0) {
+                                // Если это относительный путь TMDB (начинается со слэша)
+                                card.poster_path = item.poster;
+                                card.backdrop_path = item.poster;
+                            } else if (item.poster) {
+                                // Если это уже полный URL
+                                card.img = item.poster;
+                            } else {
+                                // Заглушка, если постера нет
+                                card.img = 'https://via.placeholder.com/300x450/333333/ffffff?text=' + encodeURIComponent(item.title.substring(0, 20));
+                            }
                             
                             if (item.type === 'tv') {
                                 card.title = item.title + ' (S' + (item.season || 1) + 'E' + (item.episode || 1) + ')';
@@ -105,7 +115,11 @@
                         var statusClass = '';
                         
                         if (data.library_status === 'pending') {
-                            statusText = 'В очереди';
+                            if (data.library_progress > 0) {
+                                statusText = 'В очереди ' + Math.round(data.library_progress) + '%';
+                            } else {
+                                statusText = 'В очереди';
+                            }
                             statusClass = 'status-pending';
                         } else if (data.library_status === 'downloading') {
                             statusText = 'Загрузка ' + Math.round(data.library_progress) + '%';
@@ -132,6 +146,52 @@
                                 viewEl.append(statusHtml);
                             } else {
                                 cardEl.append(statusHtml);
+                            }
+
+                            // Если статус не "Готово" и не "Ошибка", запускаем таймер для обновления
+                            if (data.library_status !== 'ready' && data.library_status !== 'error') {
+                                var updateTimer = setInterval(function() {
+                                    // Проверяем, существует ли еще карточка в DOM
+                                    if (!cardEl.closest('body').length) {
+                                        clearInterval(updateTimer);
+                                        return;
+                                    }
+
+                                    var url = Lampa.Storage.get('server_url', '') + '/api/library/list';
+                                    network.silent(url, function (res) {
+                                        if (res && res.success && res.items) {
+                                            var updatedItem = res.items.find(function(i) { return i.id === data.library_id; });
+                                            if (updatedItem) {
+                                                var newText = '';
+                                                if (updatedItem.status === 'pending') {
+                                                    newText = updatedItem.progress > 0 ? 'В очереди ' + Math.round(updatedItem.progress) + '%' : 'В очереди';
+                                                } else if (updatedItem.status === 'downloading') {
+                                                    newText = 'Загрузка ' + Math.round(updatedItem.progress) + '%';
+                                                } else if (updatedItem.status === 'transcoding') {
+                                                    newText = 'Конвертация ' + Math.round(updatedItem.progress) + '%';
+                                                } else if (updatedItem.status === 'ready') {
+                                                    newText = 'Готово';
+                                                    clearInterval(updateTimer);
+                                                } else if (updatedItem.status === 'error') {
+                                                    newText = 'Ошибка';
+                                                    clearInterval(updateTimer);
+                                                }
+                                                
+                                                if (newText) {
+                                                    statusHtml.text(newText);
+                                                    // Обновляем данные в самой карточке, чтобы onEnter работал правильно
+                                                    data.library_status = updatedItem.status;
+                                                    data.library_progress = updatedItem.progress;
+                                                }
+                                            } else {
+                                                // Элемент удален
+                                                clearInterval(updateTimer);
+                                            }
+                                        }
+                                    }, false, false, {
+                                        headers: getAuthHeaders()
+                                    });
+                                }, 5000); // Обновляем каждые 5 секунд
                             }
                         }
                     },
@@ -209,14 +269,16 @@
             e.menu.push({
                 title: 'Скачать на сервер',
                 onSelect: function () {
-                    var movie = e.params ? e.params.movie : {};
+                    var active = Lampa.Activity.active() || {};
+                    var activity = active.activity || {};
+                    var movie = (e.params && e.params.movie) ? e.params.movie : (activity.movie || active.movie || {});
                     var file = e.element || {};
                     
                     var data = {
                         tmdb_id: movie.id || 0,
                         type: movie.name ? 'tv' : 'movie',
                         title: movie.title || movie.name || file.title || file.name || file.Title || 'Unknown',
-                        poster: movie.poster_path || '',
+                        poster: movie.poster_path || movie.img || movie.poster || file.poster || file.img || '',
                         magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
                         season: file.season || 0,
                         episode: file.episode || 0
@@ -256,14 +318,16 @@
             e.menu.push({
                 title: 'Скачать на сервер',
                 onSelect: function () {
-                    var movie = e.params ? e.params.movie : {};
+                    var active = Lampa.Activity.active() || {};
+                    var activity = active.activity || {};
+                    var movie = (e.params && e.params.movie) ? e.params.movie : (activity.movie || active.movie || {});
                     var file = e.element || {};
                     
                     var data = {
                         tmdb_id: movie.id || 0,
                         type: movie.name ? 'tv' : 'movie',
                         title: movie.title || movie.name || file.title || file.name || file.Title || 'Unknown',
-                        poster: movie.poster_path || '',
+                        poster: movie.poster_path || movie.img || movie.poster || file.poster || file.img || '',
                         magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
                         season: file.season || 0,
                         episode: file.episode || 0
