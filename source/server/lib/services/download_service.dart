@@ -13,12 +13,12 @@ class DownloadService {
   static final DownloadService instance = DownloadService._internal();
 
   final String _torrServerUrl = 'http://torrserver:8090';
-  final String _rawDir = '/app/library/raw';
+  final String _hlsDir = '/app/library/hls';
 
-  final Map<String, StreamSubscription<List<int>>> _activeDownloads = {};
+  final Map<String, Process> _activeDownloads = {};
 
   void init() {
-    final dir = Directory(_rawDir);
+    final dir = Directory(_hlsDir);
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
     }
@@ -31,7 +31,7 @@ class DownloadService {
     // Periodically check for pending items
     Timer.periodic(const Duration(seconds: 10), (timer) async {
       if (_activeDownloads.length >= 2) {
-        // Max 2 concurrent downloads
+        // Max 2 concurrent downloads/transcodes
         return;
       }
 
@@ -175,102 +175,79 @@ class DownloadService {
         }
       }
 
-      // 3. Download the file
-      final ext =
-          p.extension(fileName).isNotEmpty ? p.extension(fileName) : '.mkv';
-      final savePath = p.join(_rawDir, '${item.id}$ext');
-      final file = File(savePath);
-
+      // 3. Transcode the file on the fly
       final streamUrl =
           '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&play=true';
 
-      print('[DownloadService] Starting stream from: $streamUrl');
+      print('[DownloadService] Starting on-the-fly transcode from: $streamUrl');
 
-      final client = http.Client();
-      final request = http.Request('GET', Uri.parse(streamUrl));
-      final response = await client.send(request);
-
-      if (response.statusCode != 200) {
-        throw Exception('Failed to start stream: ${response.statusCode}');
+      // Create output directory
+      final outDir = Directory(p.join(_hlsDir, item.id));
+      if (!outDir.existsSync()) {
+        outDir.createSync(recursive: true);
       }
 
-      final contentType = response.headers['content-type'] ?? '';
-      if (contentType.contains('application/json') ||
-          contentType.contains('text/plain')) {
-        final errorBytes = await response.stream.first;
-        final errorBody = utf8.decode(errorBytes);
-        throw Exception(
-            'TorrServer returned text/json instead of video: $errorBody');
-      }
+      final outPlaylist = p.join(outDir.path, 'playlist.m3u8');
 
-      final sink = file.openWrite();
-      var downloadedBytes = 0;
+      // Get video duration for progress calculation
+      final duration = await _getVideoDuration(streamUrl);
+
+      // Start FFmpeg
+      final process = await Process.start('ffmpeg', [
+        '-i', streamUrl,
+        '-c:v', 'libx264',
+        '-preset', 'fast',
+        '-crf', '23',
+        '-c:a', 'aac',
+        '-b:a', '128k',
+        '-f', 'hls',
+        '-hls_time', '10',
+        '-hls_list_size', '0', // Keep all segments
+        '-hls_segment_filename', p.join(outDir.path, 'segment_%03d.ts'),
+        outPlaylist,
+      ]);
+
+      _activeDownloads[item.id] = process;
+
       var lastUpdate = DateTime.now().millisecondsSinceEpoch;
 
-      final completer = Completer<void>();
-
-      _activeDownloads[item.id] = response.stream.listen(
-        (chunk) {
-          sink.add(chunk);
-          downloadedBytes += chunk.length;
+      process.stderr.transform(utf8.decoder).listen((data) {
+        // Parse time=00:00:00.00 to calculate progress
+        final timeMatch =
+            RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.\d{2}').firstMatch(data);
+        if (timeMatch != null && duration > 0) {
+          final h = int.parse(timeMatch.group(1)!);
+          final m = int.parse(timeMatch.group(2)!);
+          final s = int.parse(timeMatch.group(3)!);
+          final currentSeconds = h * 3600 + m * 60 + s;
 
           final now = DateTime.now().millisecondsSinceEpoch;
-          if (now - lastUpdate > 2000 && fileSize > 0) {
-            // Update every 2 seconds
+          if (now - lastUpdate > 2000) {
             lastUpdate = now;
-            final progress = (downloadedBytes / fileSize) * 100;
+            final progress = (currentSeconds / duration) * 100;
             unawaited(
               DataSource.instance.db.updateLibraryItem(
                 item.copyWith(progress: progress.clamp(0, 100)),
               ),
             );
           }
-        },
-        onDone: () async {
-          await sink.close();
-          client.close();
-          _activeDownloads.remove(item.id);
+        }
+      });
 
-          print(
-              '[DownloadService] Stream done. Downloaded: $downloadedBytes / $fileSize bytes');
+      final exitCode = await process.exitCode;
+      _activeDownloads.remove(item.id);
 
-          if (downloadedBytes == 0) {
-            await DataSource.instance.db.updateLibraryItem(
-              item.copyWith(
-                status: 'error',
-                errorMessage: const drift.Value(
-                    'Downloaded 0 bytes. Stream closed prematurely.'),
-              ),
-            );
-          } else if (fileSize > 0 && downloadedBytes < fileSize) {
-            await DataSource.instance.db.updateLibraryItem(
-              item.copyWith(
-                status: 'error',
-                errorMessage: drift.Value(
-                    'Download incomplete: $downloadedBytes / $fileSize bytes.'),
-              ),
-            );
-          } else {
-            // Update status to transcoding
-            await DataSource.instance.db.updateLibraryItem(
-              item.copyWith(status: 'transcoding', progress: 100),
-            );
-          }
-
-          completer.complete();
-        },
-        onError: (Object e) async {
-          await sink.close();
-          client.close();
-          _activeDownloads.remove(item.id);
-          throw Exception('Download stream error: $e');
-        },
-        cancelOnError: true,
-      );
-
-      await completer.future;
+      if (exitCode == 0) {
+        // Success
+        await DataSource.instance.db.updateLibraryItem(
+          item.copyWith(status: 'ready', progress: 100),
+        );
+      } else {
+        throw Exception('FFmpeg exited with code $exitCode');
+      }
     } catch (e) {
-      print('[DownloadService] Error downloading item ${item.id}: $e');
+      print(
+          '[DownloadService] Error downloading/transcoding item ${item.id}: $e');
       _activeDownloads.remove(item.id);
       await DataSource.instance.db.updateLibraryItem(
         item.copyWith(
@@ -281,25 +258,37 @@ class DownloadService {
     }
   }
 
+  Future<double> _getVideoDuration(String url) async {
+    try {
+      final result = await Process.run('ffprobe', [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        url,
+      ]);
+
+      if (result.exitCode == 0) {
+        return double.tryParse(result.stdout.toString().trim()) ?? 0.0;
+      }
+    } catch (e) {
+      print('[DownloadService] Error getting duration: $e');
+    }
+    return 0.0;
+  }
+
   void cancelDownload(String id) {
-    final sub = _activeDownloads[id];
-    if (sub != null) {
-      sub.cancel();
+    final process = _activeDownloads[id];
+    if (process != null) {
+      process.kill();
       _activeDownloads.remove(id);
     }
   }
 
   void deleteFiles(String id) {
     try {
-      final rawDir = Directory(_rawDir);
-      if (rawDir.existsSync()) {
-        for (final file in rawDir.listSync()) {
-          if (file is File && p.basenameWithoutExtension(file.path) == id) {
-            file.deleteSync();
-          }
-        }
-      }
-
       final hlsDir = Directory('/app/library/hls/$id');
       if (hlsDir.existsSync()) {
         hlsDir.deleteSync(recursive: true);

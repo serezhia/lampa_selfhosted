@@ -122,7 +122,7 @@
                             }
                             statusClass = 'status-pending';
                         } else if (data.library_status === 'downloading') {
-                            statusText = 'Загрузка ' + Math.round(data.library_progress) + '%';
+                            statusText = 'Загрузка (HLS) ' + Math.round(data.library_progress) + '%';
                             statusClass = 'status-downloading';
                         } else if (data.library_status === 'transcoding') {
                             statusText = 'Конвертация ' + Math.round(data.library_progress) + '%';
@@ -166,7 +166,7 @@
                                                 if (updatedItem.status === 'pending') {
                                                     newText = updatedItem.progress > 0 ? 'В очереди ' + Math.round(updatedItem.progress) + '%' : 'В очереди';
                                                 } else if (updatedItem.status === 'downloading') {
-                                                    newText = 'Загрузка ' + Math.round(updatedItem.progress) + '%';
+                                                    newText = 'Загрузка (HLS) ' + Math.round(updatedItem.progress) + '%';
                                                 } else if (updatedItem.status === 'transcoding') {
                                                     newText = 'Конвертация ' + Math.round(updatedItem.progress) + '%';
                                                 } else if (updatedItem.status === 'ready') {

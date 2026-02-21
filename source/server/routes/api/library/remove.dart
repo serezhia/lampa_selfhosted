@@ -2,7 +2,6 @@ import 'package:dart_frog/dart_frog.dart';
 import 'package:lampa_server/data_source.dart';
 import 'package:lampa_server/database/database.dart' as db;
 import 'package:lampa_server/services/download_service.dart';
-import 'package:lampa_server/services/library_transcoding_service.dart';
 
 Future<Response> onRequest(RequestContext context) async {
   if (context.request.method != HttpMethod.get) {
@@ -55,9 +54,6 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Cancel active download if any
     DownloadService.instance.cancelDownload(id);
-
-    // Cancel active transcoding if any
-    LibraryTranscodingService.instance.cancelTranscoding(id);
 
     // Delete files from disk
     DownloadService.instance.deleteFiles(id);
