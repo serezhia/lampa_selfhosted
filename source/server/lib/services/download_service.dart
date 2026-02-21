@@ -191,15 +191,18 @@ class DownloadService {
 
       // Get video duration for progress calculation
       final duration = await _getVideoDuration(streamUrl);
+      print('[DownloadService] Video duration: $duration seconds');
 
       // Start FFmpeg
       final process = await Process.start('ffmpeg', [
         '-i', streamUrl,
-        '-c:v', 'libx264',
-        '-preset', 'fast',
-        '-crf', '23',
-        '-c:a', 'aac',
+        '-map', '0:v:0', // Map first video stream
+        '-map', '0:a:0', // Map first audio stream
+        '-map', '0:s?', // Map subtitles if they exist
+        '-c:v', 'copy', // Copy video stream without re-encoding
+        '-c:a', 'aac', // Convert audio to AAC for browser compatibility
         '-b:a', '128k',
+        '-c:s', 'webvtt', // Convert subtitles to WebVTT
         '-f', 'hls',
         '-hls_time', '10',
         '-hls_list_size', '0', // Keep all segments
@@ -212,6 +215,9 @@ class DownloadService {
       var lastUpdate = DateTime.now().millisecondsSinceEpoch;
 
       process.stderr.transform(utf8.decoder).listen((data) {
+        // Print FFmpeg output for debugging
+        print('[FFmpeg] $data');
+
         // Parse time=00:00:00.00 to calculate progress
         final timeMatch =
             RegExp(r'time=(\d{2}):(\d{2}):(\d{2})\.\d{2}').firstMatch(data);
@@ -236,6 +242,7 @@ class DownloadService {
 
       final exitCode = await process.exitCode;
       _activeDownloads.remove(item.id);
+      print('[DownloadService] FFmpeg exited with code $exitCode');
 
       if (exitCode == 0) {
         // Success
@@ -260,6 +267,7 @@ class DownloadService {
 
   Future<double> _getVideoDuration(String url) async {
     try {
+      print('[DownloadService] Getting duration for: $url');
       final result = await Process.run('ffprobe', [
         '-v',
         'error',
@@ -269,6 +277,10 @@ class DownloadService {
         'default=noprint_wrappers=1:nokey=1',
         url,
       ]);
+
+      print('[DownloadService] ffprobe exit code: ${result.exitCode}');
+      print('[DownloadService] ffprobe stdout: ${result.stdout}');
+      print('[DownloadService] ffprobe stderr: ${result.stderr}');
 
       if (result.exitCode == 0) {
         return double.tryParse(result.stdout.toString().trim()) ?? 0.0;
