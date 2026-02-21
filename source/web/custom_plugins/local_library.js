@@ -1,12 +1,26 @@
 (function () {
     'use strict';
 
+    if (window.plugin_local_library_initialized) return;
+    window.plugin_local_library_initialized = true;
+
     console.log('[LocalLibrary] Инициализация плагина');
 
     var network = new Lampa.Reguest();
 
+    function getAuthHeaders() {
+        var account = Lampa.Storage.get('account', {}) || {};
+        var profile = Lampa.Storage.get('profile', {}) || {};
+        return {
+            'token': account.token || '',
+            'profile': profile.id || ''
+        };
+    }
+
     // 1. Добавляем пункт меню
     function addMenuItem() {
+        if ($('.menu__text:contains("Моя библиотека")').length) return; // Защита от дублирования
+
         var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
         
         Lampa.Menu.addButton(svg, 'Моя библиотека', function () {
@@ -21,9 +35,8 @@
 
     // 2. Создаем компонент страницы библиотеки
     function LocalLibraryComponent(object) {
-        var comp = Lampa.Maker.make('Category', object, function (module) {
-            // Отключаем пагинацию, так как у нас пока все одним списком
-            // module.toggle(Lampa.Maker.module('Category').MASK.base, 'Pagination');
+        var comp = Lampa.Utils.createInstance(Lampa.Maker.get('Category'), object, {
+            module: Lampa.Maker.module('Category').toggle(Lampa.Maker.module('Category').MASK.base, 'Pagination')
         });
 
         comp.use({
@@ -32,8 +45,6 @@
                 
                 // Запрашиваем список загрузок
                 var url = Lampa.Storage.get('server_url', '') + '/api/library/list';
-                var token = Lampa.Storage.get('account_token', '');
-                var profile = Lampa.Storage.get('active_profile', '');
 
                 network.silent(url, function (data) {
                     if (data && data.success && data.items) {
@@ -43,13 +54,20 @@
                                 id: item.tmdb_id,
                                 title: item.title,
                                 name: item.title,
+                                poster: item.poster,
                                 poster_path: item.poster,
                                 background_image: item.poster,
                                 type: item.type,
+                                media_type: item.type,
                                 library_id: item.id,
                                 library_status: item.status,
                                 library_progress: item.progress,
-                                library_error: item.error_message
+                                library_error: item.error_message,
+                                original_title: item.title,
+                                original_name: item.title,
+                                release_date: '2025',
+                                first_air_date: '2025',
+                                vote_average: 0
                             };
                             
                             if (item.type === 'tv') {
@@ -60,49 +78,63 @@
                             return card;
                         });
                         
-                        _this.build({
-                            results: items,
-                            page: 1,
-                            total_pages: 1
-                        });
+                        if (items.length > 0) {
+                            _this.build({
+                                results: items,
+                                page: 1,
+                                total_pages: 1,
+                                total_results: items.length
+                            });
+                        } else {
+                            _this.empty();
+                        }
                     } else {
                         _this.empty();
                     }
                 }, function () {
                     _this.empty();
                 }, false, {
-                    headers: {
-                        'token': token,
-                        'profile': profile ? profile.id : ''
-                    }
+                    headers: getAuthHeaders()
                 });
             },
             onInstance: function (item, data) {
-                // Добавляем статус на карточку
-                var statusText = '';
-                var statusClass = '';
-                
-                if (data.library_status === 'pending') {
-                    statusText = 'В очереди';
-                    statusClass = 'status-pending';
-                } else if (data.library_status === 'downloading') {
-                    statusText = 'Загрузка ' + Math.round(data.library_progress) + '%';
-                    statusClass = 'status-downloading';
-                } else if (data.library_status === 'transcoding') {
-                    statusText = 'Конвертация ' + Math.round(data.library_progress) + '%';
-                    statusClass = 'status-transcoding';
-                } else if (data.library_status === 'ready') {
-                    statusText = 'Готово';
-                    statusClass = 'status-ready';
-                } else if (data.library_status === 'error') {
-                    statusText = 'Ошибка';
-                    statusClass = 'status-error';
-                }
-
-                var statusHtml = $('<div class="library-status ' + statusClass + '" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.7);padding:3px 8px;border-radius:5px;font-size:12px;z-index:2;">' + statusText + '</div>');
-                item.append(statusHtml);
-
                 item.use({
+                    onCreate: function() {
+                        // Добавляем статус на карточку
+                        var statusText = '';
+                        var statusClass = '';
+                        
+                        if (data.library_status === 'pending') {
+                            statusText = 'В очереди';
+                            statusClass = 'status-pending';
+                        } else if (data.library_status === 'downloading') {
+                            statusText = 'Загрузка ' + Math.round(data.library_progress) + '%';
+                            statusClass = 'status-downloading';
+                        } else if (data.library_status === 'transcoding') {
+                            statusText = 'Конвертация ' + Math.round(data.library_progress) + '%';
+                            statusClass = 'status-transcoding';
+                        } else if (data.library_status === 'ready') {
+                            statusText = 'Готово';
+                            statusClass = 'status-ready';
+                        } else if (data.library_status === 'error') {
+                            statusText = 'Ошибка';
+                            statusClass = 'status-error';
+                        }
+
+                        if (statusText) {
+                            var statusHtml = $('<div class="library-status ' + statusClass + '" style="position:absolute;top:5px;right:5px;background:rgba(0,0,0,0.8);padding:4px 8px;border-radius:5px;font-size:12px;font-weight:bold;z-index:10;color:#fff;">' + statusText + '</div>');
+                            
+                            // В новом API Lampa DOM-элемент карточки доступен через this.html или this.card
+                            var cardEl = this.html || $(this.card);
+                            var viewEl = cardEl.find('.card__view');
+                            
+                            if (viewEl.length) {
+                                viewEl.append(statusHtml);
+                            } else {
+                                cardEl.append(statusHtml);
+                            }
+                        }
+                    },
                     onEnter: function () {
                         if (data.library_status === 'ready') {
                             // Воспроизводим
@@ -149,9 +181,7 @@
     }
 
     function deleteItem(id, callback) {
-        var url = Lampa.Storage.get('server_url', '') + '/api/library/remove';
-        var token = Lampa.Storage.get('account_token', '');
-        var profile = Lampa.Storage.get('active_profile', '');
+        var url = Lampa.Storage.get('server_url', '') + '/api/library/remove?id=' + id;
 
         network.silent(url, function (data) {
             if (data && data.success) {
@@ -162,75 +192,20 @@
             }
         }, function () {
             Lampa.Noty.show('Ошибка сети');
-        }, {
-            id: id
-        }, {
-            headers: {
-                'token': token,
-                'profile': profile ? profile.id : ''
-            },
+        }, false, {
+            headers: getAuthHeaders(),
             method: 'DELETE'
         });
     }
 
     Lampa.Component.add('local_library', LocalLibraryComponent);
 
-    // 3. Добавляем кнопку "Скачать на сервер" в список файлов торрента
+    // 3. Добавляем кнопку "Скачать на сервер" в меню действий файла (долгое нажатие на файл)
     Lampa.Listener.follow('torrent_file', function (e) {
-        if (e.type === 'render') {
-            var downloadBtn = $('<div class="torrent-item__download selector" style="padding: 5px 10px; background: rgba(255,255,255,0.1); border-radius: 5px; margin-top: 5px; text-align: center;">Скачать на сервер</div>');
-            
-            downloadBtn.on('hover:enter', function () {
-                // e.element содержит инфу о файле
-                // e.params.movie содержит инфу о фильме
-                
-                var movie = e.params ? e.params.movie : {};
-                var file = e.element || {};
-                
-                var data = {
-                    tmdb_id: movie.id || 0,
-                    type: movie.name ? 'tv' : 'movie',
-                    title: movie.title || movie.name || file.title || 'Unknown',
-                    poster: movie.poster_path || '',
-                    magnet_uri: file.magnet || (e.params ? e.params.magnet : '') || file.link,
-                    season: file.season || 0,
-                    episode: file.episode || 0
-                };
-                
-                if (!data.magnet_uri) {
-                    Lampa.Noty.show('Не удалось получить magnet-ссылку');
-                    return;
-                }
-
-                var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
-                var token = Lampa.Storage.get('account_token', '');
-                var profile = Lampa.Storage.get('active_profile', '');
-
-                network.silent(url, function (res) {
-                    if (res && res.success) {
-                        Lampa.Noty.show('Добавлено в очередь загрузки');
-                    } else {
-                        Lampa.Noty.show('Ошибка добавления');
-                    }
-                }, function () {
-                    Lampa.Noty.show('Ошибка сети');
-                }, JSON.stringify(data), {
-                    headers: {
-                        'token': token,
-                        'profile': profile ? profile.id : '',
-                        'Content-Type': 'application/json'
-                    }
-                });
-            });
-            
-            // Добавляем кнопку в элемент файла
-            e.item.append(downloadBtn);
-        }
-    });
-
-    // 4. Добавляем в долгое нажатие на торрент
-    Lampa.Listener.follow('torrent', function (e) {
         if (e.type === 'onlong') {
+            // Проверяем, нет ли уже такой кнопки
+            if (e.menu.filter(function(m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
+
             e.menu.push({
                 title: 'Скачать на сервер',
                 onSelect: function () {
@@ -240,21 +215,21 @@
                     var data = {
                         tmdb_id: movie.id || 0,
                         type: movie.name ? 'tv' : 'movie',
-                        title: movie.title || movie.name || file.title || 'Unknown',
+                        title: movie.title || movie.name || file.title || file.name || file.Title || 'Unknown',
                         poster: movie.poster_path || '',
-                        magnet_uri: file.magnet || (e.params ? e.params.magnet : '') || file.link,
+                        magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
                         season: file.season || 0,
                         episode: file.episode || 0
                     };
                     
                     if (!data.magnet_uri) {
-                        Lampa.Noty.show('Не удалось получить magnet-ссылку');
+                        Lampa.Noty.show('Не удалось получить ссылку на торрент');
                         return;
                     }
 
                     var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
-                    var token = Lampa.Storage.get('account_token', '');
-                    var profile = Lampa.Storage.get('active_profile', '');
+                    var headers = getAuthHeaders();
+                    headers['Content-Type'] = 'application/json';
 
                     network.silent(url, function (res) {
                         if (res && res.success) {
@@ -265,11 +240,54 @@
                     }, function () {
                         Lampa.Noty.show('Ошибка сети');
                     }, JSON.stringify(data), {
-                        headers: {
-                            'token': token,
-                            'profile': profile ? profile.id : '',
-                            'Content-Type': 'application/json'
+                        headers: headers
+                    });
+                }
+            });
+        }
+    });
+
+    // 4. Добавляем в долгое нажатие на сам торрент
+    Lampa.Listener.follow('torrent', function (e) {
+        if (e.type === 'onlong') {
+            // Проверяем, нет ли уже такой кнопки
+            if (e.menu.filter(function(m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
+
+            e.menu.push({
+                title: 'Скачать на сервер',
+                onSelect: function () {
+                    var movie = e.params ? e.params.movie : {};
+                    var file = e.element || {};
+                    
+                    var data = {
+                        tmdb_id: movie.id || 0,
+                        type: movie.name ? 'tv' : 'movie',
+                        title: movie.title || movie.name || file.title || file.name || file.Title || 'Unknown',
+                        poster: movie.poster_path || '',
+                        magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
+                        season: file.season || 0,
+                        episode: file.episode || 0
+                    };
+                    
+                    if (!data.magnet_uri) {
+                        Lampa.Noty.show('Не удалось получить ссылку на торрент');
+                        return;
+                    }
+
+                    var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
+                    var headers = getAuthHeaders();
+                    headers['Content-Type'] = 'application/json';
+
+                    network.silent(url, function (res) {
+                        if (res && res.success) {
+                            Lampa.Noty.show('Добавлено в очередь загрузки');
+                        } else {
+                            Lampa.Noty.show('Ошибка добавления');
                         }
+                    }, function () {
+                        Lampa.Noty.show('Ошибка сети');
+                    }, JSON.stringify(data), {
+                        headers: headers
                     });
                 }
             });

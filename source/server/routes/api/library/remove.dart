@@ -5,7 +5,8 @@ import 'package:lampa_server/services/download_service.dart';
 import 'package:lampa_server/services/library_transcoding_service.dart';
 
 Future<Response> onRequest(RequestContext context) async {
-  if (context.request.method != HttpMethod.delete) {
+  if (context.request.method != HttpMethod.delete &&
+      context.request.method != HttpMethod.post) {
     return Response(statusCode: 405);
   }
 

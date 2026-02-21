@@ -67,7 +67,7 @@ class DownloadService {
 
       if (addResponse.statusCode != 200) {
         throw Exception(
-          'Failed to add torrent to TorrServer: ${addResponse.body}',
+          'Failed to add torrent to TorrServer: ${addResponse.statusCode} ${addResponse.body}',
         );
       }
 
