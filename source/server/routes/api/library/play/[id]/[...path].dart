@@ -5,9 +5,14 @@ import 'package:path/path.dart' as p;
 
 Future<Response> onRequest(
   RequestContext context,
-  String id,
   String path,
 ) async {
+  // dart_frog passes the wildcard path as the second argument.
+  // The id is available in the pathSegments.
+  // Example URL: /api/library/play/123/playlist.m3u8
+  // pathSegments: ['api', 'library', 'play', '123', 'playlist.m3u8']
+  final id = context
+      .request.url.pathSegments[context.request.url.pathSegments.length - 2];
   if (context.request.method != HttpMethod.get) {
     return Response(statusCode: 405);
   }
