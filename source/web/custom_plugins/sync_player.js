@@ -27,7 +27,6 @@
         videoHandlers: null,
         syncTimer: null,
         lastSyncSentAt: 0,
-        lastRemoteUpdateAt: 0,
         syncThreshold: CONFIG.defaultThreshold,
         pendingMedia: null,
         awaitingPrompt: false,
@@ -196,30 +195,6 @@
         updateHeaderState();
     }
 
-    function resetAllState() {
-        log('Resetting all plugin state');
-        state.roomId = '';
-        state.isHost = false;
-        state.isConnected = false;
-        state.closing = false;
-        state.video = null;
-        state.videoHandlers = null;
-        state.syncTimer = null;
-        state.lastSyncSentAt = 0;
-        state.lastRemoteUpdateAt = 0;
-        state.pendingMedia = null;
-        state.awaitingPrompt = false;
-        state.lastMediaSignature = null;
-        state.playPauseTimer = null;
-        state.isApplyingOffer = false;
-        state.playerActive = false;
-        state.members = {};
-
-        ignoreEvents = { play: false, pause: false, seek: false };
-        for (var k in ignoreTimers) clearTimeout(ignoreTimers[k]);
-        ignoreTimers = {};
-    }
-
     function persistRoomState() {
         // Do not persist room state to storage to ensure auto-logout on reload
         Lampa.Storage.set(CONFIG.storage.room, '');
@@ -352,10 +327,6 @@
         return wsClient.socket && wsClient.socket.readyState === WebSocket.OPEN;
     }
 
-    function getVideo() {
-        return ensureVideoReference();
-    }
-
     function ensureVideoReference() {
         if (!Lampa.Player) return null;
 
@@ -450,7 +421,7 @@
         var now = Date.now();
         if (!force && now - state.lastSyncSentAt < CONFIG.minSyncIntervalMs) return;
 
-        var video = getVideo();
+        var video = ensureVideoReference();
         if (!video) return;
 
         var payload = {
@@ -469,7 +440,7 @@
         if (state.playPauseTimer) clearTimeout(state.playPauseTimer);
 
         state.playPauseTimer = setTimeout(function () {
-            var video = getVideo();
+            var video = ensureVideoReference();
             if (!video) return;
 
             var payload = {
@@ -628,9 +599,7 @@
                     }, 500);
                 } else {
                     notify('Совместный просмотр: комната не найдена');
-                    state.roomId = '';
-                    state.isHost = false;
-                    state.members = {};
+                    clearRoomState();
                     persistRoomState();
                     updateHeaderState();
                 }
@@ -705,33 +674,34 @@
         }
     }
 
-    function applySyncState(data) {
-        log('Apply Sync:', data);
-        var video = getVideo();
+    function applyRemoteState(data, isPlayPause) {
+        log(isPlayPause ? 'Apply PlayPause:' : 'Apply Sync:', data);
+        var video = ensureVideoReference();
         if (!video) {
-            log('Apply Sync: No video element');
+            log('Apply: No video element');
             return;
         }
 
-        if (typeof data.time === 'number') {
-            var timeDiff = Math.abs(video.currentTime - data.time);
-            if (timeDiff > state.syncThreshold) {
-                log('Apply Sync: Seeking from', video.currentTime, 'to', data.time);
+        var actionName = data.profile_name || 'Участник';
 
-                var actionName = data.profile_name || 'Участник';
-                if (data.is_seek && data.user_id && data.user_id !== getUid()) {
+        if (typeof data.time === 'number') {
+            var threshold = isPlayPause ? state.syncThreshold / 2 : state.syncThreshold;
+            var timeDiff = Math.abs(video.currentTime - data.time);
+            if (timeDiff > threshold) {
+                log('Apply: Seeking from', video.currentTime, 'to', data.time);
+                if (!isPlayPause && data.is_seek && data.user_id && data.user_id !== getUid()) {
                     notify('⏩ ' + actionName + ' перемотал видео');
                 }
-
                 setIgnore('seek');
                 video.currentTime = data.time;
             }
         }
 
         if (typeof data.is_playing === 'boolean') {
-            log('Apply Sync: State paused:', video.paused, 'Target playing:', data.is_playing);
+            log('Apply: State paused:', video.paused, 'Target playing:', data.is_playing);
             if (data.is_playing && video.paused) {
-                log('Apply Sync: Calling play()');
+                log('Apply: Calling play()');
+                if (isPlayPause) notify('▶ ' + actionName + ' возобновил просмотр');
                 setIgnore('play');
                 if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.play === 'function') {
                     Lampa.PlayerVideo.play();
@@ -740,7 +710,8 @@
                 }
             }
             if (!data.is_playing && !video.paused) {
-                log('Apply Sync: Calling pause()');
+                log('Apply: Calling pause()');
+                if (isPlayPause) notify('⏸ ' + actionName + ' поставил на паузу');
                 setIgnore('pause');
                 if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.pause === 'function') {
                     Lampa.PlayerVideo.pause();
@@ -749,53 +720,14 @@
                 }
             }
         }
-        state.lastRemoteUpdateAt = Date.now();
+    }
+
+    function applySyncState(data) {
+        applyRemoteState(data, false);
     }
 
     function applyPlayPause(data) {
-        log('Apply PlayPause:', data);
-        var video = getVideo();
-        if (!video) {
-            log('Apply PlayPause: No video element');
-            return;
-        }
-
-        if (typeof data.time === 'number') {
-            var timeDiff = Math.abs(video.currentTime - data.time);
-            if (timeDiff > state.syncThreshold / 2) {
-                log('Apply PlayPause: Seeking from', video.currentTime, 'to', data.time);
-                setIgnore('seek');
-                video.currentTime = data.time;
-            }
-        }
-
-        if (typeof data.is_playing === 'boolean') {
-            log('Apply PlayPause: State paused:', video.paused, 'Target playing:', data.is_playing);
-
-            var actionName = data.profile_name || 'Участник';
-
-            if (data.is_playing && video.paused) {
-                log('Apply PlayPause: Calling play()');
-                notify('▶ ' + actionName + ' возобновил просмотр');
-                setIgnore('play');
-                if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.play === 'function') {
-                    Lampa.PlayerVideo.play();
-                } else {
-                    playSilently(video);
-                }
-            }
-            if (!data.is_playing && !video.paused) {
-                log('Apply PlayPause: Calling pause()');
-                notify('⏸ ' + actionName + ' поставил на паузу');
-                setIgnore('pause');
-                if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.pause === 'function') {
-                    Lampa.PlayerVideo.pause();
-                } else {
-                    video.pause();
-                }
-            }
-        }
-        state.lastRemoteUpdateAt = Date.now();
+        applyRemoteState(data, true);
     }
 
     function playSilently(video) {
@@ -1258,12 +1190,7 @@
                         var isPublic = response.isPublic !== undefined ? response.isPublic : response.is_public;
 
                         if (response.success && roomId) {
-                            // Сбрасываем все состояние
-                            state.pendingMedia = null;
-                            state.awaitingPrompt = false;
-                            state.lastMediaSignature = null;
-                            state.isApplyingOffer = false;
-                            state.closing = false;
+                            clearRoomState();
 
                             state.roomId = roomId;
                             state.isHost = true;
@@ -1468,12 +1395,7 @@
             return;
         }
 
-        // Сбрасываем все состояние перед подключением
-        state.pendingMedia = null;
-        state.awaitingPrompt = false;
-        state.lastMediaSignature = null;
-        state.isApplyingOffer = false;
-        state.closing = false;
+        clearRoomState();
 
         state.roomId = normalized;
         state.isHost = false;
@@ -1484,10 +1406,7 @@
         toggleBack();
     }
 
-    function leaveRoom(clearStored) {
-        log('leaveRoom called, clearStored:', clearStored);
-
-        // Останавливаем все таймеры
+    function clearRoomState() {
         if (state.syncTimer) {
             clearInterval(state.syncTimer);
             state.syncTimer = null;
@@ -1497,10 +1416,6 @@
             state.playPauseTimer = null;
         }
 
-        closeWebSocket('manual');
-        detachVideoListeners();
-
-        // Полная очистка состояния
         state.roomId = '';
         state.isHost = false;
         state.isConnected = false;
@@ -1510,11 +1425,18 @@
         state.lastMediaSignature = null;
         state.isApplyingOffer = false;
         state.lastSyncSentAt = 0;
-        state.lastRemoteUpdateAt = 0;
 
         ignoreEvents = { play: false, pause: false, seek: false };
         for (var k in ignoreTimers) clearTimeout(ignoreTimers[k]);
         ignoreTimers = {};
+    }
+
+    function leaveRoom(clearStored) {
+        log('leaveRoom called, clearStored:', clearStored);
+
+        closeWebSocket('manual');
+        detachVideoListeners();
+        clearRoomState();
 
         persistRoomState();
         updateHeaderState();
