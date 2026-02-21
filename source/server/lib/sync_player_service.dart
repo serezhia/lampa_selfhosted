@@ -16,6 +16,7 @@ class SyncRoom {
   final String hostUid;
   bool isPublic;
   final Set<String> members = {};
+  final Map<String, String> memberNames = {};
   final Map<String, WebSocketChannel> channels = {};
 
   /// Текущее состояние медиа (для новых участников)
@@ -201,6 +202,7 @@ class SyncPlayerService {
 
     // Убедимся что uid в members
     room.members.add(uid);
+    room.memberNames[uid] = json['profile_name'] as String? ?? 'Гость';
     room.channels[uid] = channel;
     _channelToRoom[channel] = room.id;
 
@@ -211,6 +213,7 @@ class SyncPlayerService {
       'is_host': true,
       'is_public': room.isPublic,
       'member_count': room.members.length,
+      'members': room.memberNames,
     });
   }
 
@@ -241,7 +244,9 @@ class SyncPlayerService {
     room._cleanupTimer?.cancel();
     room._cleanupTimer = null;
 
+    final profileName = json['profile_name'] as String? ?? 'Гость';
     room.members.add(uid);
+    room.memberNames[uid] = profileName;
     room.channels[uid] = channel;
     _channelToRoom[channel] = roomId;
 
@@ -256,6 +261,7 @@ class SyncPlayerService {
       'is_host': isHost,
       'host_uid': room.hostUid,
       'member_count': room.members.length,
+      'members': room.memberNames,
     });
 
     // Уведомляем остальных
@@ -264,7 +270,9 @@ class SyncPlayerService {
       {
         'action': 'user_joined',
         'user_id': uid,
+        'profile_name': profileName,
         'member_count': room.members.length,
+        'members': room.memberNames,
       },
       exclude: uid,
     );
@@ -293,7 +301,9 @@ class SyncPlayerService {
     final room = _rooms[roomId];
     if (room == null) return;
 
+    final profileName = room.memberNames[uid] ?? 'Гость';
     room.members.remove(uid);
+    room.memberNames.remove(uid);
     room.channels.remove(uid);
     _channelToRoom.remove(channel);
 
@@ -301,7 +311,9 @@ class SyncPlayerService {
     _broadcastToRoom(roomId, {
       'action': 'user_left',
       'user_id': uid,
+      'profile_name': profileName,
       'member_count': room.members.length,
+      'members': room.memberNames,
     });
 
     // Если комната пуста - запускаем таймер на удаление
@@ -345,12 +357,14 @@ class SyncPlayerService {
     final room = _rooms[roomId];
     if (room == null) return;
 
-    // Только хост может синхронизировать
-    if (room.hostUid != uid) return;
+    // Разрешаем всем участникам синхронизировать состояние
+    // if (room.hostUid != uid) return;
 
     room
       ..currentTime = (json['time'] as num?)?.toDouble()
       ..isPlaying = json['is_playing'] as bool?;
+
+    final profileName = room.memberNames[uid] ?? 'Гость';
 
     _broadcastToRoom(
       roomId,
@@ -358,6 +372,9 @@ class SyncPlayerService {
         'action': 'sync_state',
         'time': json['time'],
         'is_playing': json['is_playing'],
+        'is_seek': json['is_seek'],
+        'user_id': uid,
+        'profile_name': profileName,
       },
       exclude: uid,
     );
@@ -373,12 +390,14 @@ class SyncPlayerService {
     final room = _rooms[roomId];
     if (room == null) return;
 
-    // Только хост
-    if (room.hostUid != uid) return;
+    // Разрешаем всем участникам ставить на паузу
+    // if (room.hostUid != uid) return;
 
     room
       ..currentTime = (json['time'] as num?)?.toDouble()
       ..isPlaying = json['is_playing'] as bool?;
+
+    final profileName = room.memberNames[uid] ?? 'Гость';
 
     _broadcastToRoom(
       roomId,
@@ -386,6 +405,8 @@ class SyncPlayerService {
         'action': 'play_pause',
         'time': json['time'],
         'is_playing': json['is_playing'],
+        'user_id': uid,
+        'profile_name': profileName,
       },
       exclude: uid,
     );
