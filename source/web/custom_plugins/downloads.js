@@ -502,7 +502,7 @@
         });
 
         // Небольшая задержка перед открытием второго меню, чтобы первое успело закрыться
-        setTimeout(function() {
+        setTimeout(function () {
             Lampa.Select.show({
                 title: 'Выберите субтитры',
                 items: items,
