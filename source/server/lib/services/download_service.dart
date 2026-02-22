@@ -16,6 +16,8 @@ class DownloadService {
   final String _hlsDir = '/app/library/hls';
 
   final Map<String, Process> _activeDownloads = {};
+  final Set<String> _startingDownloads = {};
+  Timer? _queueTimer;
 
   void init() {
     final dir = Directory(_hlsDir);
@@ -23,28 +25,50 @@ class DownloadService {
       dir.createSync(recursive: true);
     }
 
+    // Reset any stuck 'downloading' items back to 'pending' on startup
+    unawaited(_resetStuckDownloads());
+
     // Start processing pending items
-    _processPendingQueue();
+    if (_queueTimer == null) {
+      _queueTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+        if (_activeDownloads.length + _startingDownloads.length >= 2) {
+          // Max 2 concurrent downloads/transcodes
+          return;
+        }
+
+        final pendingItems = await (DataSource.instance.db
+                .select(DataSource.instance.db.libraryItems)
+              ..where((t) => t.status.equals('pending'))
+              ..limit(1))
+            .get();
+
+        if (pendingItems.isNotEmpty) {
+          final item = pendingItems.first;
+          if (!_activeDownloads.containsKey(item.id) &&
+              !_startingDownloads.contains(item.id)) {
+            _startingDownloads.add(item.id);
+            unawaited(_startDownload(item));
+          }
+        }
+      });
+    }
   }
 
-  Future<void> _processPendingQueue() async {
-    // Periodically check for pending items
-    Timer.periodic(const Duration(seconds: 10), (timer) async {
-      if (_activeDownloads.length >= 2) {
-        // Max 2 concurrent downloads/transcodes
-        return;
-      }
-
-      final pendingItems = await (DataSource.instance.db
+  Future<void> _resetStuckDownloads() async {
+    try {
+      final stuckItems = await (DataSource.instance.db
               .select(DataSource.instance.db.libraryItems)
-            ..where((t) => t.status.equals('pending'))
-            ..limit(1))
+            ..where((t) => t.status.equals('downloading')))
           .get();
 
-      if (pendingItems.isNotEmpty) {
-        unawaited(_startDownload(pendingItems.first));
+      for (final item in stuckItems) {
+        await DataSource.instance.db.updateLibraryItem(
+          item.copyWith(status: 'pending'),
+        );
       }
-    });
+    } catch (e) {
+      print('[DownloadService] Error resetting stuck downloads: $e');
+    }
   }
 
   Future<void> _startDownload(db.LibraryItem item) async {
@@ -230,6 +254,7 @@ class DownloadService {
       }
 
       _activeDownloads[item.id] = process;
+      _startingDownloads.remove(item.id);
 
       var lastUpdate = DateTime.now().millisecondsSinceEpoch;
 
@@ -279,6 +304,7 @@ class DownloadService {
       print(
           '[DownloadService] Error downloading/transcoding item ${item.id}: $e');
       _activeDownloads.remove(item.id);
+      _startingDownloads.remove(item.id);
       await DataSource.instance.db.updateLibraryItem(
         item.copyWith(
           status: 'error',
