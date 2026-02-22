@@ -29,29 +29,27 @@ class DownloadService {
     unawaited(_resetStuckDownloads());
 
     // Start processing pending items
-    if (_queueTimer == null) {
-      _queueTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
-        if (_activeDownloads.length + _startingDownloads.length >= 2) {
-          // Max 2 concurrent downloads/transcodes
-          return;
-        }
+    _queueTimer ??= Timer.periodic(const Duration(seconds: 10), (timer) async {
+      if (_activeDownloads.length + _startingDownloads.length >= 2) {
+        // Max 2 concurrent downloads/transcodes
+        return;
+      }
 
-        final pendingItems = await (DataSource.instance.db
-                .select(DataSource.instance.db.libraryItems)
-              ..where((t) => t.status.equals('pending'))
-              ..limit(1))
-            .get();
+      final pendingItems = await (DataSource.instance.db
+              .select(DataSource.instance.db.libraryItems)
+            ..where((t) => t.status.equals('pending'))
+            ..limit(1))
+          .get();
 
-        if (pendingItems.isNotEmpty) {
-          final item = pendingItems.first;
-          if (!_activeDownloads.containsKey(item.id) &&
-              !_startingDownloads.contains(item.id)) {
-            _startingDownloads.add(item.id);
-            unawaited(_startDownload(item));
-          }
+      if (pendingItems.isNotEmpty) {
+        final item = pendingItems.first;
+        if (!_activeDownloads.containsKey(item.id) &&
+            !_startingDownloads.contains(item.id)) {
+          _startingDownloads.add(item.id);
+          unawaited(_startDownload(item));
         }
-      });
-    }
+      }
+    });
   }
 
   Future<void> _resetStuckDownloads() async {
@@ -146,54 +144,53 @@ class DownloadService {
 
       // 2. Find the correct file index
       final fileStats = torrentInfo['file_stats'] as List<dynamic>;
-      var fileIndex = 1;
+      var fileIndex = item.fileIndex ?? 1;
       var fileSize = 0;
-      var fileName = '';
 
-      if (item.type == 'movie') {
-        // Find largest file
-        for (final f in fileStats) {
-          final stat = f as Map<String, dynamic>;
-          final length = stat['length'] as int? ?? 0;
-          if (length > fileSize) {
-            fileSize = length;
-            fileIndex = stat['id'] as int? ?? 1;
-            fileName = stat['path'] as String? ?? '';
-          }
-        }
-      } else if (item.type == 'tv') {
-        // Try to match season and episode
-        final s = item.season?.toString().padLeft(2, '0');
-        final e = item.episode?.toString().padLeft(2, '0');
-
-        var found = false;
-        for (final f in fileStats) {
-          final stat = f as Map<String, dynamic>;
-          final path = (stat['path'] as String? ?? '').toLowerCase();
-
-          // Simple regex matching for SxxEyy
-          if (s != null && e != null) {
-            if (path.contains('s$s') && path.contains('e$e') ||
-                path.contains('s${s}e$e') ||
-                path.contains('${s}x$e')) {
-              fileIndex = stat['id'] as int? ?? 1;
-              fileSize = stat['length'] as int? ?? 0;
-              fileName = path;
-              found = true;
-              break;
-            }
-          }
-        }
-
-        if (!found) {
-          // Fallback to largest file if not found
+      if (item.fileIndex == null) {
+        if (item.type == 'movie') {
+          // Find largest file
           for (final f in fileStats) {
             final stat = f as Map<String, dynamic>;
             final length = stat['length'] as int? ?? 0;
             if (length > fileSize) {
               fileSize = length;
               fileIndex = stat['id'] as int? ?? 1;
-              fileName = stat['path'] as String? ?? '';
+            }
+          }
+        } else if (item.type == 'tv') {
+          // Try to match season and episode
+          final s = item.season?.toString().padLeft(2, '0');
+          final e = item.episode?.toString().padLeft(2, '0');
+
+          var found = false;
+          for (final f in fileStats) {
+            final stat = f as Map<String, dynamic>;
+            final path = (stat['path'] as String? ?? '').toLowerCase();
+
+            // Simple regex matching for SxxEyy
+            if (s != null && e != null) {
+              if (path.contains('s$s') && path.contains('e$e') ||
+                  path.contains('s${s}e$e') ||
+                  path.contains('${s}x$e')) {
+                fileIndex = stat['id'] as int? ?? 1;
+                fileSize = stat['length'] as int? ?? 0;
+
+                found = true;
+                break;
+              }
+            }
+          }
+
+          if (!found) {
+            // Fallback to largest file if not found
+            for (final f in fileStats) {
+              final stat = f as Map<String, dynamic>;
+              final length = stat['length'] as int? ?? 0;
+              if (length > fileSize) {
+                fileSize = length;
+                fileIndex = stat['id'] as int? ?? 1;
+              }
             }
           }
         }
@@ -220,15 +217,18 @@ class DownloadService {
       // Start FFmpeg
       final process = await Process.start('ffmpeg', [
         '-i', streamUrl,
+        '-copyts', // Keep original timestamps for HLS (CRITICAL for avoiding bufferAppendError)
         '-map', '0:v:0', // Map first video stream
         '-map', '0:${item.audioIndex ?? 'a:0'}', // Map selected audio stream
         '-c:v', 'copy', // Copy video stream without re-encoding
         '-c:a', 'aac', // Convert audio to AAC for browser compatibility
-        '-b:a', '128k',
+        '-b:a', '192k',
+        '-ac', '2',
         '-f', 'hls',
         '-hls_time', '10',
         '-hls_list_size', '0', // Keep all segments
-        '-hls_segment_filename', p.join(outDir.path, 'segment_%03d.ts'),
+        '-hls_flags', 'independent_segments+temp_file',
+        '-hls_segment_filename', p.join(outDir.path, 'segment_%05d.ts'),
         outPlaylist,
       ]);
 
@@ -302,7 +302,8 @@ class DownloadService {
       }
     } catch (e) {
       print(
-          '[DownloadService] Error downloading/transcoding item ${item.id}: $e');
+        '[DownloadService] Error downloading/transcoding item ${item.id}: $e',
+      );
       _activeDownloads.remove(item.id);
       _startingDownloads.remove(item.id);
       await DataSource.instance.db.updateLibraryItem(

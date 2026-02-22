@@ -68,6 +68,8 @@ RUN mkdir -p /plugins/builtin /plugins/custom /usr/share/nginx/html/plugins
 # Копируем entrypoint скрипт
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+# Fix line endings for Windows
+RUN sed -i 's/\r$//' /entrypoint.sh
 
 # Добавляем скрипт для загрузки modification.js в index.html
 # Вставляем тег <script> перед закрывающим </body>

@@ -19,14 +19,14 @@
 
     // 1. Добавляем пункт меню
     function addMenuItem() {
-        if ($('.menu__text:contains("Моя библиотека")').length) return; // Защита от дублирования
+        if ($('.menu__text:contains("Скачанные")').length) return; // Защита от дублирования
 
         var svg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
 
-        Lampa.Menu.addButton(svg, 'Моя библиотека', function () {
+        Lampa.Menu.addButton(svg, 'Скачанные', function () {
             Lampa.Activity.push({
                 url: '',
-                title: 'Моя библиотека',
+                title: 'Скачанные',
                 component: 'local_library',
                 page: 1
             });
@@ -152,13 +152,16 @@
                             // Если статус не "Готово" и не "Ошибка", запускаем таймер для обновления
                             if (data.library_status !== 'ready' && data.library_status !== 'error') {
                                 var updateTimer = setInterval(function () {
-                                    // Проверяем, существует ли еще карточка в DOM
-                                    if (!cardEl.closest('body').length) {
+                                    // Проверяем, находимся ли мы все еще на странице библиотеки
+                                    var active = Lampa.Activity.active();
+                                    if (!active || active.component !== 'local_library') {
                                         clearInterval(updateTimer);
                                         return;
                                     }
 
-                                    var url = Lampa.Storage.get('server_url', '') + '/api/library/list';
+                                    // Добавляем timestamp, чтобы браузер не кешировал GET-запрос
+                                    var url = Lampa.Storage.get('server_url', '') + '/api/library/list?t=' + Date.now();
+
                                     network.silent(url, function (res) {
                                         if (res && res.success && res.items) {
                                             var updatedItem = res.items.find(function (i) { return i.id === data.library_id; });
@@ -192,7 +195,7 @@
                                     }, false, false, {
                                         headers: getAuthHeaders()
                                     });
-                                }, 5000); // Обновляем каждые 5 секунд
+                                }, 3000); // Обновляем каждые 3 секунды для большей отзывчивости
                             }
                         }
                     },
@@ -224,6 +227,10 @@
                                 title: 'Действия',
                                 items: [
                                     {
+                                        title: 'Открыть карточку',
+                                        action: 'open'
+                                    },
+                                    {
                                         title: 'Удалить из библиотеки',
                                         action: 'delete'
                                     }
@@ -233,12 +240,77 @@
                                         deleteItem(data.library_id, function () {
                                             Lampa.Activity.replace(); // Перезагружаем страницу
                                         });
+                                    } else if (a.action === 'open') {
+                                        Lampa.Activity.push({
+                                            url: '',
+                                            component: 'full',
+                                            id: data.id,
+                                            method: data.type,
+                                            card: data
+                                        });
                                     }
                                 },
                                 onBack: function () {
                                     Lampa.Controller.toggle('content');
                                 }
                             });
+                        }
+                    },
+                    onMenu: function (info) {
+                        // Очищаем стандартное меню Лампы (Закладки, Нравится и т.д.)
+                        if (info && info.length !== undefined) {
+                            info.length = 0;
+                        }
+
+                        var menu = [
+                            {
+                                title: 'Открыть карточку',
+                                action: 'open'
+                            },
+                            {
+                                title: 'Удалить из библиотеки',
+                                action: 'delete'
+                            }
+                        ];
+
+                        if (data.library_status === 'ready') {
+                            menu.unshift({
+                                title: 'Смотреть',
+                                action: 'play'
+                            });
+                        }
+
+                        // Добавляем обработчик onSelect прямо в каждый пункт меню
+                        menu.forEach(function (m) {
+                            m.onSelect = function () {
+                                if (m.action === 'delete') {
+                                    deleteItem(data.library_id, function () {
+                                        Lampa.Activity.replace(); // Перезагружаем страницу
+                                    });
+                                } else if (m.action === 'play') {
+                                    var playUrl = Lampa.Storage.get('server_url', '') + '/api/library/play/' + data.library_id + '/playlist.m3u8';
+                                    var video = { title: data.title, url: playUrl };
+                                    if (data.subtitle_index !== null && data.subtitle_index !== undefined) {
+                                        var subUrl = Lampa.Storage.get('server_url', '') + '/api/library/play/' + data.library_id + '/subtitles.vtt';
+                                        video.subtitles = [{ label: 'Встроенные', url: subUrl, index: 0 }];
+                                    }
+                                    Lampa.Player.play(video);
+                                    Lampa.Player.playlist([video]);
+                                } else if (m.action === 'open') {
+                                    Lampa.Activity.push({
+                                        url: '',
+                                        component: 'full',
+                                        id: data.id,
+                                        method: data.type,
+                                        card: data
+                                    });
+                                }
+                            };
+                        });
+
+                        // Если info - это массив (как передает Lampa в onMenu), пушим туда наши пункты
+                        if (info && info.push) {
+                            menu.forEach(function (m) { info.push(m); });
                         }
                     },
                     onFocus: function () {
@@ -351,12 +423,14 @@
         };
     }
 
-    function startDownloadProcess(data, streamUrl) {
+    function startDownloadProcess(data) {
         Lampa.Loading.start(function () { }, 'Анализ медиафайла...');
 
-        var ffprobeUrl = Lampa.Storage.get('server_url', '') + '/api/transcoding/ffprobe?media=' + encodeURIComponent(streamUrl);
+        var analyzeUrl = Lampa.Storage.get('server_url', '') + '/api/library/analyze';
+        var headers = getAuthHeaders();
+        headers['Content-Type'] = 'application/json';
 
-        network.silent(ffprobeUrl, function (info) {
+        network.silent(analyzeUrl, function (info) {
             Lampa.Loading.stop();
 
             var streams = (info && Array.isArray(info.streams)) ? info.streams : [];
@@ -382,8 +456,9 @@
         }, function () {
             Lampa.Loading.stop();
             Lampa.Noty.show('Ошибка анализа файла');
-        }, false, {
-            headers: getAuthHeaders()
+        }, JSON.stringify(data), {
+            headers: headers,
+            method: 'POST'
         });
     }
 
@@ -504,11 +579,11 @@
                         poster: movie.poster_path || movie.img || movie.poster || file.poster || file.img || '',
                         magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
                         season: file.season || 0,
-                        episode: file.episode || 0
+                        episode: file.episode || 0,
+                        file_index: file.index !== undefined ? file.index : (file.id !== undefined ? file.id : (file.file_index !== undefined ? file.file_index : null))
                     };
 
                     // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
-                    var streamUrl = data.magnet_uri;
                     if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
                         var match = data.magnet_uri.match(/link=([^&]+)/);
                         if (match && match[1]) {
@@ -521,77 +596,15 @@
                         return;
                     }
 
-                    // Если это TorrServer, мы можем проанализировать файл перед скачиванием
-                    if (streamUrl && streamUrl.indexOf('/stream?') !== -1) {
-                        // Заменяем параметры на play=true для ffprobe
-                        streamUrl = streamUrl.replace(/&(preload|stat|m3u)/g, '&play');
-                        if (streamUrl.indexOf('&play=true') === -1) {
-                            streamUrl += '&play=true';
-                        }
-                        startDownloadProcess(data, streamUrl);
-                    } else {
-                        // Если это просто магнет, скачиваем без выбора дорожек (по умолчанию)
-                        sendDownloadRequest(data, null, null);
-                    }
+                    // Отправляем запрос на бэкенд для анализа файла (ffprobe)
+                    // Бэкенд сам найдет нужный файл в торренте и вернет список дорожек
+                    startDownloadProcess(data);
                 }
             });
         }
     });
 
-    // 4. Добавляем в долгое нажатие на сам торрент
-    Lampa.Listener.follow('torrent', function (e) {
-        if (e.type === 'onlong') {
-            // Проверяем, нет ли уже такой кнопки
-            if (e.menu.filter(function (m) { return m.title === 'Скачать на сервер'; }).length > 0) return;
-
-            e.menu.push({
-                title: 'Скачать на сервер',
-                onSelect: function () {
-                    var active = Lampa.Activity.active() || {};
-                    var activity = active.activity || {};
-                    var movie = (e.params && e.params.movie) ? e.params.movie : (activity.movie || active.movie || {});
-                    var file = e.element || {};
-
-                    var data = {
-                        tmdb_id: movie.id || 0,
-                        type: movie.name ? 'tv' : 'movie',
-                        title: movie.title || movie.name || file.title || file.name || file.Title || 'Unknown',
-                        poster: movie.poster_path || movie.img || movie.poster || file.poster || file.img || '',
-                        magnet_uri: file.MagnetUri || file.link || file.url || file.magnet || (e.params ? e.params.magnet : ''),
-                        season: file.season || 0,
-                        episode: file.episode || 0
-                    };
-
-                    // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
-                    var streamUrl = data.magnet_uri;
-                    if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
-                        var match = data.magnet_uri.match(/link=([^&]+)/);
-                        if (match && match[1]) {
-                            data.magnet_uri = decodeURIComponent(match[1]);
-                        }
-                    }
-
-                    if (!data.magnet_uri) {
-                        Lampa.Noty.show('Не удалось получить ссылку на торрент');
-                        return;
-                    }
-
-                    // Если это TorrServer, мы можем проанализировать файл перед скачиванием
-                    if (streamUrl && streamUrl.indexOf('/stream?') !== -1) {
-                        // Заменяем параметры на play=true для ffprobe
-                        streamUrl = streamUrl.replace(/&(preload|stat|m3u)/g, '&play');
-                        if (streamUrl.indexOf('&play=true') === -1) {
-                            streamUrl += '&play=true';
-                        }
-                        startDownloadProcess(data, streamUrl);
-                    } else {
-                        // Если это просто магнет, скачиваем без выбора дорожек (по умолчанию)
-                        sendDownloadRequest(data, null, null);
-                    }
-                }
-            });
-        }
-    });
+    // 4. (Удалено) Раньше здесь была кнопка для самого торрента, теперь только для файлов
 
     // Инициализация
     if (window.appready) {

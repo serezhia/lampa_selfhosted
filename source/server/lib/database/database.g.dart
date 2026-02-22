@@ -4129,6 +4129,12 @@ class $LibraryItemsTable extends LibraryItems
   late final GeneratedColumn<String> errorMessage = GeneratedColumn<String>(
       'error_message', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _fileIndexMeta =
+      const VerificationMeta('fileIndex');
+  @override
+  late final GeneratedColumn<int> fileIndex = GeneratedColumn<int>(
+      'file_index', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _audioIndexMeta =
       const VerificationMeta('audioIndex');
   @override
@@ -4163,6 +4169,7 @@ class $LibraryItemsTable extends LibraryItems
         status,
         progress,
         errorMessage,
+        fileIndex,
         audioIndex,
         subtitleIndex,
         createdAt
@@ -4240,6 +4247,10 @@ class $LibraryItemsTable extends LibraryItems
           errorMessage.isAcceptableOrUnknown(
               data['error_message']!, _errorMessageMeta));
     }
+    if (data.containsKey('file_index')) {
+      context.handle(_fileIndexMeta,
+          fileIndex.isAcceptableOrUnknown(data['file_index']!, _fileIndexMeta));
+    }
     if (data.containsKey('audio_index')) {
       context.handle(
           _audioIndexMeta,
@@ -4289,6 +4300,8 @@ class $LibraryItemsTable extends LibraryItems
           .read(DriftSqlType.double, data['${effectivePrefix}progress'])!,
       errorMessage: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}error_message']),
+      fileIndex: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}file_index']),
       audioIndex: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}audio_index']),
       subtitleIndex: attachedDatabase.typeMapping
@@ -4317,6 +4330,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
   final String status;
   final double progress;
   final String? errorMessage;
+  final int? fileIndex;
   final int? audioIndex;
   final int? subtitleIndex;
   final DateTime createdAt;
@@ -4333,6 +4347,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       required this.status,
       required this.progress,
       this.errorMessage,
+      this.fileIndex,
       this.audioIndex,
       this.subtitleIndex,
       required this.createdAt});
@@ -4358,6 +4373,9 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
     map['progress'] = Variable<double>(progress);
     if (!nullToAbsent || errorMessage != null) {
       map['error_message'] = Variable<String>(errorMessage);
+    }
+    if (!nullToAbsent || fileIndex != null) {
+      map['file_index'] = Variable<int>(fileIndex);
     }
     if (!nullToAbsent || audioIndex != null) {
       map['audio_index'] = Variable<int>(audioIndex);
@@ -4389,6 +4407,9 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       errorMessage: errorMessage == null && nullToAbsent
           ? const Value.absent()
           : Value(errorMessage),
+      fileIndex: fileIndex == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fileIndex),
       audioIndex: audioIndex == null && nullToAbsent
           ? const Value.absent()
           : Value(audioIndex),
@@ -4415,6 +4436,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       status: serializer.fromJson<String>(json['status']),
       progress: serializer.fromJson<double>(json['progress']),
       errorMessage: serializer.fromJson<String?>(json['errorMessage']),
+      fileIndex: serializer.fromJson<int?>(json['fileIndex']),
       audioIndex: serializer.fromJson<int?>(json['audioIndex']),
       subtitleIndex: serializer.fromJson<int?>(json['subtitleIndex']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
@@ -4436,6 +4458,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       'status': serializer.toJson<String>(status),
       'progress': serializer.toJson<double>(progress),
       'errorMessage': serializer.toJson<String?>(errorMessage),
+      'fileIndex': serializer.toJson<int?>(fileIndex),
       'audioIndex': serializer.toJson<int?>(audioIndex),
       'subtitleIndex': serializer.toJson<int?>(subtitleIndex),
       'createdAt': serializer.toJson<DateTime>(createdAt),
@@ -4455,6 +4478,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           String? status,
           double? progress,
           Value<String?> errorMessage = const Value.absent(),
+          Value<int?> fileIndex = const Value.absent(),
           Value<int?> audioIndex = const Value.absent(),
           Value<int?> subtitleIndex = const Value.absent(),
           DateTime? createdAt}) =>
@@ -4472,6 +4496,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
         progress: progress ?? this.progress,
         errorMessage:
             errorMessage.present ? errorMessage.value : this.errorMessage,
+        fileIndex: fileIndex.present ? fileIndex.value : this.fileIndex,
         audioIndex: audioIndex.present ? audioIndex.value : this.audioIndex,
         subtitleIndex:
             subtitleIndex.present ? subtitleIndex.value : this.subtitleIndex,
@@ -4493,6 +4518,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       errorMessage: data.errorMessage.present
           ? data.errorMessage.value
           : this.errorMessage,
+      fileIndex: data.fileIndex.present ? data.fileIndex.value : this.fileIndex,
       audioIndex:
           data.audioIndex.present ? data.audioIndex.value : this.audioIndex,
       subtitleIndex: data.subtitleIndex.present
@@ -4517,6 +4543,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           ..write('status: $status, ')
           ..write('progress: $progress, ')
           ..write('errorMessage: $errorMessage, ')
+          ..write('fileIndex: $fileIndex, ')
           ..write('audioIndex: $audioIndex, ')
           ..write('subtitleIndex: $subtitleIndex, ')
           ..write('createdAt: $createdAt')
@@ -4538,6 +4565,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
       status,
       progress,
       errorMessage,
+      fileIndex,
       audioIndex,
       subtitleIndex,
       createdAt);
@@ -4557,6 +4585,7 @@ class LibraryItem extends DataClass implements Insertable<LibraryItem> {
           other.status == this.status &&
           other.progress == this.progress &&
           other.errorMessage == this.errorMessage &&
+          other.fileIndex == this.fileIndex &&
           other.audioIndex == this.audioIndex &&
           other.subtitleIndex == this.subtitleIndex &&
           other.createdAt == this.createdAt);
@@ -4575,6 +4604,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
   final Value<String> status;
   final Value<double> progress;
   final Value<String?> errorMessage;
+  final Value<int?> fileIndex;
   final Value<int?> audioIndex;
   final Value<int?> subtitleIndex;
   final Value<DateTime> createdAt;
@@ -4592,6 +4622,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
     this.status = const Value.absent(),
     this.progress = const Value.absent(),
     this.errorMessage = const Value.absent(),
+    this.fileIndex = const Value.absent(),
     this.audioIndex = const Value.absent(),
     this.subtitleIndex = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -4610,6 +4641,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
     required String status,
     this.progress = const Value.absent(),
     this.errorMessage = const Value.absent(),
+    this.fileIndex = const Value.absent(),
     this.audioIndex = const Value.absent(),
     this.subtitleIndex = const Value.absent(),
     this.createdAt = const Value.absent(),
@@ -4634,6 +4666,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
     Expression<String>? status,
     Expression<double>? progress,
     Expression<String>? errorMessage,
+    Expression<int>? fileIndex,
     Expression<int>? audioIndex,
     Expression<int>? subtitleIndex,
     Expression<DateTime>? createdAt,
@@ -4652,6 +4685,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
       if (status != null) 'status': status,
       if (progress != null) 'progress': progress,
       if (errorMessage != null) 'error_message': errorMessage,
+      if (fileIndex != null) 'file_index': fileIndex,
       if (audioIndex != null) 'audio_index': audioIndex,
       if (subtitleIndex != null) 'subtitle_index': subtitleIndex,
       if (createdAt != null) 'created_at': createdAt,
@@ -4672,6 +4706,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
       Value<String>? status,
       Value<double>? progress,
       Value<String?>? errorMessage,
+      Value<int?>? fileIndex,
       Value<int?>? audioIndex,
       Value<int?>? subtitleIndex,
       Value<DateTime>? createdAt,
@@ -4689,6 +4724,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
       status: status ?? this.status,
       progress: progress ?? this.progress,
       errorMessage: errorMessage ?? this.errorMessage,
+      fileIndex: fileIndex ?? this.fileIndex,
       audioIndex: audioIndex ?? this.audioIndex,
       subtitleIndex: subtitleIndex ?? this.subtitleIndex,
       createdAt: createdAt ?? this.createdAt,
@@ -4735,6 +4771,9 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
     if (errorMessage.present) {
       map['error_message'] = Variable<String>(errorMessage.value);
     }
+    if (fileIndex.present) {
+      map['file_index'] = Variable<int>(fileIndex.value);
+    }
     if (audioIndex.present) {
       map['audio_index'] = Variable<int>(audioIndex.value);
     }
@@ -4765,6 +4804,7 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
           ..write('status: $status, ')
           ..write('progress: $progress, ')
           ..write('errorMessage: $errorMessage, ')
+          ..write('fileIndex: $fileIndex, ')
           ..write('audioIndex: $audioIndex, ')
           ..write('subtitleIndex: $subtitleIndex, ')
           ..write('createdAt: $createdAt, ')
@@ -8085,6 +8125,7 @@ typedef $$LibraryItemsTableCreateCompanionBuilder = LibraryItemsCompanion
   required String status,
   Value<double> progress,
   Value<String?> errorMessage,
+  Value<int?> fileIndex,
   Value<int?> audioIndex,
   Value<int?> subtitleIndex,
   Value<DateTime> createdAt,
@@ -8104,6 +8145,7 @@ typedef $$LibraryItemsTableUpdateCompanionBuilder = LibraryItemsCompanion
   Value<String> status,
   Value<double> progress,
   Value<String?> errorMessage,
+  Value<int?> fileIndex,
   Value<int?> audioIndex,
   Value<int?> subtitleIndex,
   Value<DateTime> createdAt,
@@ -8170,6 +8212,9 @@ class $$LibraryItemsTableFilterComposer
 
   ColumnFilters<String> get errorMessage => $composableBuilder(
       column: $table.errorMessage, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get fileIndex => $composableBuilder(
+      column: $table.fileIndex, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<int> get audioIndex => $composableBuilder(
       column: $table.audioIndex, builder: (column) => ColumnFilters(column));
@@ -8244,6 +8289,9 @@ class $$LibraryItemsTableOrderingComposer
       column: $table.errorMessage,
       builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get fileIndex => $composableBuilder(
+      column: $table.fileIndex, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<int> get audioIndex => $composableBuilder(
       column: $table.audioIndex, builder: (column) => ColumnOrderings(column));
 
@@ -8317,6 +8365,9 @@ class $$LibraryItemsTableAnnotationComposer
   GeneratedColumn<String> get errorMessage => $composableBuilder(
       column: $table.errorMessage, builder: (column) => column);
 
+  GeneratedColumn<int> get fileIndex =>
+      $composableBuilder(column: $table.fileIndex, builder: (column) => column);
+
   GeneratedColumn<int> get audioIndex => $composableBuilder(
       column: $table.audioIndex, builder: (column) => column);
 
@@ -8382,6 +8433,7 @@ class $$LibraryItemsTableTableManager extends RootTableManager<
             Value<String> status = const Value.absent(),
             Value<double> progress = const Value.absent(),
             Value<String?> errorMessage = const Value.absent(),
+            Value<int?> fileIndex = const Value.absent(),
             Value<int?> audioIndex = const Value.absent(),
             Value<int?> subtitleIndex = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
@@ -8400,6 +8452,7 @@ class $$LibraryItemsTableTableManager extends RootTableManager<
             status: status,
             progress: progress,
             errorMessage: errorMessage,
+            fileIndex: fileIndex,
             audioIndex: audioIndex,
             subtitleIndex: subtitleIndex,
             createdAt: createdAt,
@@ -8418,6 +8471,7 @@ class $$LibraryItemsTableTableManager extends RootTableManager<
             required String status,
             Value<double> progress = const Value.absent(),
             Value<String?> errorMessage = const Value.absent(),
+            Value<int?> fileIndex = const Value.absent(),
             Value<int?> audioIndex = const Value.absent(),
             Value<int?> subtitleIndex = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
@@ -8436,6 +8490,7 @@ class $$LibraryItemsTableTableManager extends RootTableManager<
             status: status,
             progress: progress,
             errorMessage: errorMessage,
+            fileIndex: fileIndex,
             audioIndex: audioIndex,
             subtitleIndex: subtitleIndex,
             createdAt: createdAt,

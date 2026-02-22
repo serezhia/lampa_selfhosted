@@ -9,7 +9,7 @@
             "file": "src/core/socket.js",
             "description": "Захардкодить WebSocket URL на свой домен",
             "search": "    let socket_url = ws + mirror + pt\n\n    if(window.lampa_settings.socket_url) socket_url = window.lampa_settings.socket_url",
-            "replace": "    let socket_url = ws + '{{SELF_HOSTED_DOMAIN}}' + pt"
+            "replace": "    let socket_url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + '{{SELF_HOSTED_DOMAIN}}' + pt"
         },
         {
             "file": "src/core/account/api.js",

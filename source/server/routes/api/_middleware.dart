@@ -7,7 +7,6 @@ Handler middleware(Handler handler) {
     final path = context.request.uri.path;
     final method = context.request.method.value;
     print('[MIDDLEWARE] $method $path');
-    print('[MIDDLEWARE] Headers: ${context.request.headers}');
 
     // Skip auth for public endpoints
     if (context.request.uri.path.contains('/device/add') ||

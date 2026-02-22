@@ -5,20 +5,15 @@ import 'package:path/path.dart' as p;
 
 Future<Response> onRequest(
   RequestContext context,
-  String path,
+  String id,
+  String filename,
 ) async {
-  // dart_frog passes the wildcard path as the second argument.
-  // The id is available in the pathSegments.
-  // Example URL: /api/library/play/123/playlist.m3u8
-  // pathSegments: ['api', 'library', 'play', '123', 'playlist.m3u8']
-  final id = context
-      .request.url.pathSegments[context.request.url.pathSegments.length - 2];
   if (context.request.method != HttpMethod.get) {
     return Response(statusCode: 405);
   }
 
   const hlsDir = '/app/library/hls';
-  final filePath = p.join(hlsDir, id, path);
+  final filePath = p.join(hlsDir, id, filename);
 
   final file = File(filePath);
   if (!file.existsSync()) {
@@ -32,6 +27,8 @@ Future<Response> onRequest(
     contentType = 'application/vnd.apple.mpegurl';
   } else if (ext == '.ts') {
     contentType = 'video/mp2t';
+  } else if (ext == '.m4s' || ext == '.mp4') {
+    contentType = 'video/mp4';
   } else if (ext == '.vtt') {
     contentType = 'text/vtt';
   }
