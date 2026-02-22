@@ -21,19 +21,17 @@ When developing frontend plugins or working with the Lampa UI, you **MUST** use 
 - Use mcp_deepwiki_ask_question to ask specific questions about how Lampa components work (e.g., "How to use Lampa.Activity?", "How does the player component work?").
 - Use mcp_deepwiki_read_wiki_structure and mcp_deepwiki_read_wiki_contents to browse the available documentation.
 
-## Advanced Plugin Development (TypeScript & Bundling)
+## Advanced Plugin Development (Single File ES5)
 
-While simple plugins can be written in a single JS file, complex features should be split into multiple files or written in TypeScript.
+Lampa plugins are executed directly in the browser. They **must** be written in strict ES5 JavaScript.
 
-Since our project clones the original Lampa repository and builds it via Docker (source/web/Dockerfile), we don't have a built-in Webpack/Rollup setup for *our custom plugins* out of the box. 
+**CRITICAL RULES:**
+1. **NO ES6+ Syntax:** Do not use `let`, `const`, arrow functions (`=>`), classes, template literals, or destructuring. Use `var` and `function()`.
+2. **Single File:** Write the entire plugin in a single `.js` file. Do not use bundlers (Webpack, esbuild) or TypeScript.
+3. **IIFE Encapsulation:** Wrap the entire plugin in an Immediately Invoked Function Expression to avoid polluting the global scope.
+4. **Logical Sections:** Use comments to divide the single file into logical sections (e.g., `// 1. API`, `// 2. Helpers`, `// 3. UI Components`, `// 4. Initialization`).
 
-**If you need to write a complex plugin in TypeScript or split it into modules:**
-1. Create a subfolder in source/web/custom_plugins/ (e.g., my_complex_plugin/).
-2. Set up a local package.json and a bundler (like sbuild, webpack, or ollup) inside that folder.
-3. Configure the bundler to output a **single ES5 IIFE file** (e.g., my_complex_plugin.bundle.js) into the root of source/web/custom_plugins/.
-4. The Docker build process will automatically pick up my_complex_plugin.bundle.js and serve it.
-
-*Note: Do not use ES6 import/xport in the final output file, as older Smart TVs do not support ES modules.*
+*Note: Do not use ES6 import/export in the final output file, as older Smart TVs do not support ES modules.*
 
 ## References & Templates
 

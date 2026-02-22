@@ -123,7 +123,13 @@
     // =========================================================================
 
     function resolveMediaUrl(data) {
-        if (data && data.url) return data.url;
+        if (data && data.url) {
+            var url = data.url;
+            if (/\/stream\?/i.test(url) && url.indexOf('preload=') === -1) {
+                url += '&preload=true';
+            }
+            return url;
+        }
         return '';
     }
 
@@ -268,6 +274,7 @@
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
+                Lampa.Controller.toggle(lastController);
                 if (!item || item.track === undefined) {
                     notify('Не выбрана дорожка');
                     return;
@@ -322,6 +329,7 @@
             items: items,
             onSelect: function (item) {
                 Lampa.Select.close();
+                Lampa.Controller.toggle(lastController);
                 startTranscoding(data, audioTrack, item.track, duration);
             },
             onBack: function () {

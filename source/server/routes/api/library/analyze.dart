@@ -137,7 +137,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // 4. Construct stream URL and run ffprobe
     final streamUrl =
-        '$torrServerUrl/stream?link=${Uri.encodeComponent(magnetUri)}&index=$fileIndex&play=true';
+        '$torrServerUrl/stream?link=${Uri.encodeComponent(magnetUri)}&index=$fileIndex&play=true&preload=true';
 
     final transcoding = DataSource.instance.transcoding;
     final info = await transcoding.ffprobe(streamUrl);

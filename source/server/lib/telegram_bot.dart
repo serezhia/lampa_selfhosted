@@ -473,6 +473,8 @@ class TelegramBotService {
         .row()
         .add('📢 Уведомления', 'admin_notices')
         .row()
+        .add('🖥️ Информация о машине', 'admin_sysinfo')
+        .row()
         .add('« Главное меню', 'main_menu');
 
     const text = '🔧 *Панель администратора*\n\nВыберите раздел:';
@@ -488,6 +490,127 @@ class TelegramBotService {
     } else {
       await ctx.reply(
         text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Показать информацию о машине
+  Future<void> _showSysInfo(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    if (!(await DataSource.instance.isAdmin(telegramUserId))) return;
+
+    var sysInfoText = '🖥️ *Информация о машине*\n\n';
+
+    try {
+      // RAM
+      final freeResult = await Process.run('free', ['-m']);
+      if (freeResult.exitCode == 0) {
+        final lines = freeResult.stdout.toString().split('\n');
+        if (lines.length > 1) {
+          final memLine = lines[1].split(RegExp(r'\s+'));
+          if (memLine.length >= 4) {
+            final total = int.tryParse(memLine[1]) ?? 0;
+            final used = int.tryParse(memLine[2]) ?? 0;
+            final free = int.tryParse(memLine[3]) ?? 0;
+
+            String formatMb(int mb) {
+              if (mb > 1024) {
+                return '${(mb / 1024).toStringAsFixed(2)} GB';
+              }
+              return '$mb MB';
+            }
+
+            sysInfoText +=
+                '💾 *RAM:*\n• Всего: ${formatMb(total)}\n• Занято: ${formatMb(used)}\n• Свободно: ${formatMb(free)}\n\n';
+          }
+        }
+      }
+
+      // Storage
+      final dfResult = await Process.run('df', ['-h', '/app/data']);
+      if (dfResult.exitCode == 0) {
+        final lines = dfResult.stdout.toString().split('\n');
+        if (lines.length > 1) {
+          final dfLine = lines[1].split(RegExp(r'\s+'));
+          if (dfLine.length >= 5) {
+            final size = dfLine[1];
+            final used = dfLine[2];
+            final avail = dfLine[3];
+            final usePercent = dfLine[4];
+            sysInfoText +=
+                '💽 *Storage (Host):*\n• Всего: $size\n• Занято: $used ($usePercent)\n• Свободно: $avail\n\n';
+          }
+        }
+      }
+
+      // CPU
+      final topResult = await Process.run('sh', ['-c', 'top -bn1 | grep Cpu']);
+      if (topResult.exitCode == 0) {
+        final cpuLine = topResult.stdout.toString().trim();
+        final match = RegExp(r'(\d+\.\d+)\s*id').firstMatch(cpuLine);
+        if (match != null) {
+          final idle = double.tryParse(match.group(1) ?? '100') ?? 100.0;
+          final load = (100.0 - idle).toStringAsFixed(1);
+          sysInfoText += '⚙️ *CPU:*\n• Нагрузка: $load%\n\n';
+        } else {
+          sysInfoText += '⚙️ *CPU:*\n• $cpuLine\n\n';
+        }
+      }
+
+      // Network
+      final netResult = await Process.run('cat', ['/proc/net/dev']);
+      if (netResult.exitCode == 0) {
+        final lines = netResult.stdout.toString().split('\n');
+        for (final line in lines) {
+          if (line.contains('eth0:')) {
+            final parts = line.split(':');
+            if (parts.length == 2) {
+              final stats = parts[1].trim().split(RegExp(r'\s+'));
+              if (stats.length >= 9) {
+                final rxBytes = int.tryParse(stats[0]) ?? 0;
+                final txBytes = int.tryParse(stats[8]) ?? 0;
+
+                String formatBytes(int bytes) {
+                  if (bytes > 1024 * 1024 * 1024) {
+                    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+                  } else {
+                    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+                  }
+                }
+
+                sysInfoText +=
+                    '🌐 *Network (eth0):*\n• Получено: ${formatBytes(rxBytes)}\n• Отправлено: ${formatBytes(txBytes)}\n';
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      sysInfoText += '❌ Ошибка получения данных: $e';
+    }
+
+    final keyboard = InlineKeyboard()
+        .add('🔄 Обновить', 'admin_sysinfo')
+        .row()
+        .add('« Назад', 'admin_menu');
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        sysInfoText,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        sysInfoText,
         parseMode: ParseMode.markdown,
         replyMarkup: keyboard,
       );
@@ -822,6 +945,8 @@ class TelegramBotService {
       // ============= Admin callbacks =============
       else if (data == 'admin_menu') {
         await _showAdminMenu(ctx, messageId: messageId, edit: true);
+      } else if (data == 'admin_sysinfo') {
+        await _showSysInfo(ctx, messageId: messageId, edit: true);
       } else if (data == 'admin_notices') {
         await _showNoticesList(ctx, messageId: messageId, edit: true);
       } else if (data == 'notice_create') {

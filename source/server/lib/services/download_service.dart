@@ -198,7 +198,7 @@ class DownloadService {
 
       // 3. Transcode the file on the fly
       final streamUrl =
-          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&play=true';
+          '$_torrServerUrl/stream?link=${Uri.encodeComponent(item.magnetUri)}&index=$fileIndex&play=true&preload=true';
 
       print('[DownloadService] Starting on-the-fly transcode from: $streamUrl');
 
@@ -216,6 +216,8 @@ class DownloadService {
 
       // Start FFmpeg
       final process = await Process.start('ffmpeg', [
+        '-fflags', '+genpts+discardcorrupt',
+        '-err_detect', 'ignore_err',
         '-i', streamUrl,
         '-copyts', // Keep original timestamps for HLS (CRITICAL for avoiding bufferAppendError)
         '-map', '0:v:0', // Map first video stream
@@ -237,6 +239,10 @@ class DownloadService {
       if (item.subtitleIndex != null) {
         final subArgs = [
           '-y',
+          '-fflags',
+          '+genpts+discardcorrupt',
+          '-err_detect',
+          'ignore_err',
           '-i',
           streamUrl,
           '-map',
@@ -325,6 +331,8 @@ class DownloadService {
         'format=duration',
         '-of',
         'default=noprint_wrappers=1:nokey=1',
+        '-fflags',
+        '+genpts+discardcorrupt',
         url,
       ]);
 

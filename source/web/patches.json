@@ -15,7 +15,7 @@
             "file": "src/core/account/api.js",
             "description": "Захардкодить домен для Account API",
             "search": "function url(){\n    return Utils.protocol() + Manifest.cub_domain + '/api/'\n}",
-            "replace": "function url(){\n    return Utils.protocol() + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
+            "replace": "function url(){\n    return (window.location.protocol === 'https:' ? 'https://' : 'http://') + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
         },
         {
             "file": "src/interaction/settings/params.js",

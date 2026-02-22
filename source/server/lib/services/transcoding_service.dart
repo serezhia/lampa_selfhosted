@@ -142,6 +142,8 @@ class TranscodingService {
         'json',
         '-show_streams',
         '-show_format',
+        '-fflags',
+        '+genpts+discardcorrupt',
         mediaUrl,
       ],
       stdoutEncoding: utf8,
@@ -383,6 +385,8 @@ class TranscodingService {
     final args = <String>['-y'];
 
     args.addAll(['-ss', startTime.toStringAsFixed(3)]);
+    args.addAll(['-fflags', '+genpts+discardcorrupt']);
+    args.addAll(['-err_detect', 'ignore_err']);
     args.addAll(['-i', session.sourceUrl]);
 
     args.addAll(['-copyts']); // Keep original timestamps for HLS
@@ -446,6 +450,10 @@ class TranscodingService {
     ];
 
     args.addAll([
+      '-fflags',
+      '+genpts+discardcorrupt',
+      '-err_detect',
+      'ignore_err',
       '-i',
       session.sourceUrl,
       '-map',
