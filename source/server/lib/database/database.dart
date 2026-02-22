@@ -182,6 +182,8 @@ class LibraryItems extends Table {
       text()(); // 'pending', 'downloading', 'transcoding', 'ready', 'error'
   RealColumn get progress => real().withDefault(const Constant(0))();
   TextColumn get errorMessage => text().named('error_message').nullable()();
+  IntColumn get audioIndex => integer().named('audio_index').nullable()();
+  IntColumn get subtitleIndex => integer().named('subtitle_index').nullable()();
   DateTimeColumn get createdAt =>
       dateTime().named('created_at').withDefault(currentDateAndTime)();
 
@@ -211,7 +213,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration {
@@ -233,6 +235,10 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 4) {
           await m.createTable(libraryItems);
+        }
+        if (from < 5) {
+          await m.addColumn(libraryItems, libraryItems.audioIndex);
+          await m.addColumn(libraryItems, libraryItems.subtitleIndex);
         }
       },
     );

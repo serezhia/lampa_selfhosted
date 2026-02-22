@@ -32,6 +32,8 @@ Future<Response> onRequest(
     contentType = 'application/vnd.apple.mpegurl';
   } else if (ext == '.ts') {
     contentType = 'video/mp2t';
+  } else if (ext == '.vtt') {
+    contentType = 'text/vtt';
   }
 
   return Response.bytes(

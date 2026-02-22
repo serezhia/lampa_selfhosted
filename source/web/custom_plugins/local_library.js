@@ -60,6 +60,7 @@
                                 library_status: item.status,
                                 library_progress: item.progress,
                                 library_error: item.error_message,
+                                subtitle_index: item.subtitle_index,
                                 original_title: item.title,
                                 original_name: item.title,
                                 release_date: '2025',
@@ -205,6 +206,16 @@
                                 url: playUrl
                             };
 
+                            // Если есть субтитры, добавляем их
+                            if (data.subtitle_index !== null && data.subtitle_index !== undefined) {
+                                var subUrl = Lampa.Storage.get('server_url', '') + '/api/library/play/' + data.library_id + '/subtitles.vtt';
+                                video.subtitles = [{
+                                    label: 'Встроенные',
+                                    url: subUrl,
+                                    index: 0
+                                }];
+                            }
+
                             Lampa.Player.play(video);
                             Lampa.Player.playlist([video]);
                         } else {
@@ -260,6 +271,218 @@
 
     Lampa.Component.add('local_library', LocalLibraryComponent);
 
+    // =========================================================================
+    // Helpers for Track Selection
+    // =========================================================================
+
+    var TEXT_SUBTITLE_CODECS = [
+        'subrip', 'srt', 'ass', 'ssa', 'webvtt', 'vtt',
+        'mov_text', 'text', 'ttml', 'stl'
+    ];
+
+    var GRAPHICAL_SUBTITLE_CODECS = [
+        'hdmv_pgs_subtitle', 'pgs', 'dvd_subtitle', 'dvdsub',
+        'dvb_subtitle', 'xsub', 'vobsub'
+    ];
+
+    function isTextSubtitle(track) {
+        if (!track || !track.codec_name) return false;
+        var codec = track.codec_name.toLowerCase();
+        if (TEXT_SUBTITLE_CODECS.indexOf(codec) !== -1) return true;
+        if (GRAPHICAL_SUBTITLE_CODECS.indexOf(codec) !== -1) return false;
+        return true;
+    }
+
+    function formatAudioItem(track, index) {
+        var tags = track.tags || {};
+        var title = tags.title || tags.handler_name || ('Дорожка ' + (index + 1));
+        var lang = (tags.language || '').toUpperCase();
+        var codec = (track.codec_name || '').toUpperCase();
+
+        var channels = '';
+        if (track.channel_layout) {
+            channels = track.channel_layout
+                .replace('(side)', '')
+                .replace('stereo', '2.0')
+                .replace('5.1', '5.1')
+                .replace('7.1', '7.1');
+        } else if (track.channels) {
+            channels = track.channels + ' ch';
+        }
+
+        var rate = '';
+        if (track.bit_rate) {
+            rate = Math.round(track.bit_rate / 1000) + ' kbps';
+        }
+
+        var subtitleParts = [];
+        if (lang) subtitleParts.push(lang);
+        if (codec) subtitleParts.push(codec);
+        if (channels) subtitleParts.push(channels);
+        if (rate) subtitleParts.push(rate);
+
+        return {
+            title: title,
+            subtitle: subtitleParts.join(' • '),
+            track: track,
+            index: index
+        };
+    }
+
+    function formatSubtitleItem(track, index) {
+        var tags = track.tags || {};
+        var title = tags.title || tags.handler_name || ('Субтитры ' + (index + 1));
+        var lang = (tags.language || '').toUpperCase();
+        var codec = (track.codec_name || '').toUpperCase();
+
+        var isGraphical = !isTextSubtitle(track);
+
+        var subtitleParts = [];
+        if (lang) subtitleParts.push(lang);
+        if (codec) subtitleParts.push(codec);
+        if (isGraphical) subtitleParts.push('(графические)');
+
+        return {
+            title: title,
+            subtitle: subtitleParts.join(' • '),
+            track: track,
+            index: index,
+            isGraphical: isGraphical
+        };
+    }
+
+    function startDownloadProcess(data, streamUrl) {
+        Lampa.Loading.start(function () { }, 'Анализ медиафайла...');
+
+        var ffprobeUrl = Lampa.Storage.get('server_url', '') + '/api/transcoding/ffprobe?media=' + encodeURIComponent(streamUrl);
+
+        network.silent(ffprobeUrl, function (info) {
+            Lampa.Loading.stop();
+
+            var streams = (info && Array.isArray(info.streams)) ? info.streams : [];
+
+            var audioTracks = streams.filter(function (s) {
+                return s.codec_type === 'audio';
+            });
+
+            var subtitleTracks = streams.filter(function (s) {
+                return s.codec_type === 'subtitle';
+            });
+
+            if (audioTracks.length === 0) {
+                Lampa.Noty.show('Аудиодорожки не найдены');
+                return;
+            }
+
+            if (audioTracks.length === 1 && subtitleTracks.length === 0) {
+                sendDownloadRequest(data, audioTracks[0].index, null);
+            } else {
+                showAudioSelector(data, audioTracks, subtitleTracks);
+            }
+        }, function () {
+            Lampa.Loading.stop();
+            Lampa.Noty.show('Ошибка анализа файла');
+        }, false, {
+            headers: getAuthHeaders()
+        });
+    }
+
+    function showAudioSelector(data, audioTracks, subtitleTracks) {
+        var items = audioTracks.map(function (track, index) {
+            return formatAudioItem(track, index);
+        });
+
+        var lastController = Lampa.Controller.enabled().name;
+
+        Lampa.Select.show({
+            title: 'Выберите аудиодорожку',
+            items: items,
+            onSelect: function (item) {
+                Lampa.Select.close();
+                if (!item || item.track === undefined) {
+                    Lampa.Noty.show('Не выбрана дорожка');
+                    return;
+                }
+
+                if (subtitleTracks && subtitleTracks.length > 0) {
+                    showSubtitleSelector(data, item.track.index, subtitleTracks);
+                } else {
+                    sendDownloadRequest(data, item.track.index, null);
+                }
+            },
+            onBack: function () {
+                Lampa.Controller.toggle(lastController);
+            }
+        });
+    }
+
+    function showSubtitleSelector(data, audioIndex, subtitleTracks) {
+        var textSubs = subtitleTracks.filter(function (track) {
+            return isTextSubtitle(track);
+        });
+
+        if (textSubs.length === 0) {
+            var hasGraphical = subtitleTracks.some(function (track) {
+                return !isTextSubtitle(track);
+            });
+            if (hasGraphical) {
+                Lampa.Noty.show('Только графические субтитры (PGS/VOBSUB) - не поддерживаются', 4000);
+            }
+            sendDownloadRequest(data, audioIndex, null);
+            return;
+        }
+
+        var items = [{
+            title: 'Без субтитров',
+            subtitle: '',
+            track: null,
+            index: -1
+        }];
+
+        textSubs.forEach(function (track, index) {
+            items.push(formatSubtitleItem(track, index));
+        });
+
+        var lastController = Lampa.Controller.enabled().name;
+
+        Lampa.Select.show({
+            title: 'Выберите субтитры',
+            items: items,
+            onSelect: function (item) {
+                Lampa.Select.close();
+                sendDownloadRequest(data, audioIndex, item.index !== -1 ? item.track.index : null);
+            },
+            onBack: function () {
+                Lampa.Controller.toggle(lastController);
+            }
+        });
+    }
+
+    function sendDownloadRequest(data, audioIndex, subtitleIndex) {
+        if (audioIndex !== null) {
+            data.audio_index = audioIndex;
+        }
+        if (subtitleIndex !== null) {
+            data.subtitle_index = subtitleIndex;
+        }
+
+        var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
+        var headers = getAuthHeaders();
+        headers['Content-Type'] = 'application/json';
+
+        network.silent(url, function (res) {
+            if (res && res.success) {
+                Lampa.Noty.show('Добавлено в очередь загрузки');
+            } else {
+                Lampa.Noty.show('Ошибка добавления');
+            }
+        }, function () {
+            Lampa.Noty.show('Ошибка сети');
+        }, JSON.stringify(data), {
+            headers: headers
+        });
+    }
+
     // 3. Добавляем кнопку "Скачать на сервер" в меню действий файла (долгое нажатие на файл)
     Lampa.Listener.follow('torrent_file', function (e) {
         if (e.type === 'onlong') {
@@ -285,6 +508,7 @@
                     };
 
                     // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
+                    var streamUrl = data.magnet_uri;
                     if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
                         var match = data.magnet_uri.match(/link=([^&]+)/);
                         if (match && match[1]) {
@@ -297,21 +521,18 @@
                         return;
                     }
 
-                    var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
-                    var headers = getAuthHeaders();
-                    headers['Content-Type'] = 'application/json';
-
-                    network.silent(url, function (res) {
-                        if (res && res.success) {
-                            Lampa.Noty.show('Добавлено в очередь загрузки');
-                        } else {
-                            Lampa.Noty.show('Ошибка добавления');
+                    // Если это TorrServer, мы можем проанализировать файл перед скачиванием
+                    if (streamUrl && streamUrl.indexOf('/stream?') !== -1) {
+                        // Заменяем параметры на play=true для ffprobe
+                        streamUrl = streamUrl.replace(/&(preload|stat|m3u)/g, '&play');
+                        if (streamUrl.indexOf('&play=true') === -1) {
+                            streamUrl += '&play=true';
                         }
-                    }, function () {
-                        Lampa.Noty.show('Ошибка сети');
-                    }, JSON.stringify(data), {
-                        headers: headers
-                    });
+                        startDownloadProcess(data, streamUrl);
+                    } else {
+                        // Если это просто магнет, скачиваем без выбора дорожек (по умолчанию)
+                        sendDownloadRequest(data, null, null);
+                    }
                 }
             });
         }
@@ -342,6 +563,7 @@
                     };
 
                     // Если ссылка - это стрим с TorrServer, вытаскиваем оригинальный хэш/магнет
+                    var streamUrl = data.magnet_uri;
                     if (data.magnet_uri && data.magnet_uri.indexOf('link=') !== -1) {
                         var match = data.magnet_uri.match(/link=([^&]+)/);
                         if (match && match[1]) {
@@ -354,21 +576,18 @@
                         return;
                     }
 
-                    var url = Lampa.Storage.get('server_url', '') + '/api/library/add';
-                    var headers = getAuthHeaders();
-                    headers['Content-Type'] = 'application/json';
-
-                    network.silent(url, function (res) {
-                        if (res && res.success) {
-                            Lampa.Noty.show('Добавлено в очередь загрузки');
-                        } else {
-                            Lampa.Noty.show('Ошибка добавления');
+                    // Если это TorrServer, мы можем проанализировать файл перед скачиванием
+                    if (streamUrl && streamUrl.indexOf('/stream?') !== -1) {
+                        // Заменяем параметры на play=true для ffprobe
+                        streamUrl = streamUrl.replace(/&(preload|stat|m3u)/g, '&play');
+                        if (streamUrl.indexOf('&play=true') === -1) {
+                            streamUrl += '&play=true';
                         }
-                    }, function () {
-                        Lampa.Noty.show('Ошибка сети');
-                    }, JSON.stringify(data), {
-                        headers: headers
-                    });
+                        startDownloadProcess(data, streamUrl);
+                    } else {
+                        // Если это просто магнет, скачиваем без выбора дорожек (по умолчанию)
+                        sendDownloadRequest(data, null, null);
+                    }
                 }
             });
         }

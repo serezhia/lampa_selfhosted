@@ -197,19 +197,37 @@ class DownloadService {
       final process = await Process.start('ffmpeg', [
         '-i', streamUrl,
         '-map', '0:v:0', // Map first video stream
-        '-map', '0:a:0', // Map first audio stream
-        '-map',
-        '0:s:0?', // Map FIRST subtitle stream if it exists (HLS doesn't support multiple without master playlist)
+        '-map', '0:${item.audioIndex ?? 'a:0'}', // Map selected audio stream
         '-c:v', 'copy', // Copy video stream without re-encoding
         '-c:a', 'aac', // Convert audio to AAC for browser compatibility
         '-b:a', '128k',
-        '-c:s', 'webvtt', // Convert subtitles to WebVTT
         '-f', 'hls',
         '-hls_time', '10',
         '-hls_list_size', '0', // Keep all segments
         '-hls_segment_filename', p.join(outDir.path, 'segment_%03d.ts'),
         outPlaylist,
       ]);
+
+      // Start separate subtitle extraction process if requested
+      Process? subtitleProcess;
+      if (item.subtitleIndex != null) {
+        final subArgs = [
+          '-y',
+          '-i',
+          streamUrl,
+          '-map',
+          '0:${item.subtitleIndex}',
+          '-c:s',
+          'webvtt',
+          p.join(outDir.path, 'subtitles.vtt'),
+        ];
+        print('[DownloadService] Subtitle FFmpeg args: ${subArgs.join(' ')}');
+        subtitleProcess = await Process.start('ffmpeg', subArgs);
+
+        subtitleProcess.stderr.transform(utf8.decoder).listen((line) {
+          // print('[FFmpeg-Subs] $line');
+        });
+      }
 
       _activeDownloads[item.id] = process;
 
@@ -244,6 +262,10 @@ class DownloadService {
       final exitCode = await process.exitCode;
       _activeDownloads.remove(item.id);
       print('[DownloadService] FFmpeg exited with code $exitCode');
+
+      if (subtitleProcess != null) {
+        subtitleProcess.kill();
+      }
 
       if (exitCode == 0) {
         // Success

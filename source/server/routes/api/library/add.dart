@@ -27,6 +27,8 @@ Future<Response> onRequest(RequestContext context) async {
         'title': params['title'],
         'poster': params['poster'],
         'magnet_uri': params['magnet_uri'],
+        'audio_index': int.tryParse(params['audio_index'] ?? ''),
+        'subtitle_index': int.tryParse(params['subtitle_index'] ?? ''),
       };
     } else {
       body = await context.request.json() as Map<String, dynamic>;
@@ -45,6 +47,12 @@ Future<Response> onRequest(RequestContext context) async {
     final title = body['title']?.toString();
     final poster = body['poster']?.toString();
     final magnetUri = body['magnet_uri']?.toString();
+    final audioIndex = body['audio_index'] is int
+        ? body['audio_index'] as int
+        : int.tryParse(body['audio_index']?.toString() ?? '');
+    final subtitleIndex = body['subtitle_index'] is int
+        ? body['subtitle_index'] as int
+        : int.tryParse(body['subtitle_index']?.toString() ?? '');
 
     if (tmdbId == null || type == null || title == null || magnetUri == null) {
       return Response.json(
@@ -66,6 +74,8 @@ Future<Response> onRequest(RequestContext context) async {
         title: title,
         poster: drift.Value(poster),
         magnetUri: magnetUri,
+        audioIndex: drift.Value(audioIndex),
+        subtitleIndex: drift.Value(subtitleIndex),
         status: 'pending',
       ),
     );

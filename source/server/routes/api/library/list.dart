@@ -26,6 +26,8 @@ Future<Response> onRequest(RequestContext context) async {
                 'title': item.title,
                 'poster': item.poster,
                 'magnet_uri': item.magnetUri,
+                'audio_index': item.audioIndex,
+                'subtitle_index': item.subtitleIndex,
                 'status': item.status,
                 'progress': item.progress,
                 'error_message': item.errorMessage,
