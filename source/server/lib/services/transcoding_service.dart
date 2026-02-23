@@ -319,9 +319,14 @@ class TranscodingService {
         highestSegment = session.currentFfmpegStartSegment;
       }
 
+      final lowestSegment = _getLowestSegmentOnDisk(session);
+
       if (segmentNumber < session.currentFfmpegStartSegment) {
         needsRestart = true;
       } else if (segmentNumber > highestSegment + 10) {
+        needsRestart = true;
+      } else if (lowestSegment != -1 && segmentNumber < lowestSegment) {
+        // Segment was deleted by cleanup, need to regenerate
         needsRestart = true;
       }
     }
@@ -357,6 +362,27 @@ class TranscodingService {
       print('[Transcoding] Error listing segments: $e');
     }
     return highest;
+  }
+
+  int _getLowestSegmentOnDisk(TranscodingSession session) {
+    final dir = Directory(session.outputDir);
+    var lowest = -1;
+    if (!dir.existsSync()) return lowest;
+
+    try {
+      for (final entity in dir.listSync()) {
+        if (entity is File && entity.path.endsWith('.ts')) {
+          final match = RegExp(r'segment_(\d+)\.ts').firstMatch(entity.path);
+          if (match != null) {
+            final num = int.parse(match.group(1)!);
+            if (lowest == -1 || num < lowest) lowest = num;
+          }
+        }
+      }
+    } catch (e) {
+      print('[Transcoding] Error listing segments: $e');
+    }
+    return lowest;
   }
 
   Future<void> _restartFfmpeg(
@@ -557,9 +583,10 @@ class TranscodingService {
     if (!dir.existsSync()) return;
 
     final current = session.lastRequestedSegment;
-    // Keep segments within a window of [-20, +50] from the current segment
+    // Only delete segments that are too far behind current position
+    // Don't delete segments ahead - FFmpeg may have already created them
+    // and we'll need them soon for playback
     final minKeep = current - 20;
-    final maxKeep = current + 50;
 
     try {
       for (final entity in dir.listSync()) {
@@ -567,7 +594,7 @@ class TranscodingService {
           final match = RegExp(r'segment_(\d+)\.ts').firstMatch(entity.path);
           if (match != null) {
             final num = int.parse(match.group(1)!);
-            if (num < minKeep || num > maxKeep) {
+            if (num < minKeep) {
               try {
                 entity.deleteSync();
               } catch (e) {
