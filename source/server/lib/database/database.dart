@@ -192,6 +192,40 @@ class LibraryItems extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Таблица для синхронизации данных Lampa (Storage Sync)
+class StorageData extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get profileId =>
+      integer().named('profile_id').references(Profiles, #id)();
+  TextColumn get key => text()(); // e.g., 'online_view', 'user_clarifys'
+  TextColumn get type => text()(); // e.g., 'array_string', 'object_object'
+  TextColumn get data => text()(); // JSON string
+  DateTimeColumn get updatedAt =>
+      dateTime().named('updated_at').withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {profileId, key},
+      ];
+}
+
+/// Таблица пользовательских плагинов
+class UserPlugins extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get userId => text().named('user_id').references(Users, #id)();
+  TextColumn get url => text()();
+  TextColumn get name => text().nullable()();
+  IntColumn get status =>
+      integer().withDefault(const Constant(1))(); // 1 = active, 0 = inactive
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {userId, url},
+      ];
+}
+
 @DriftDatabase(
   tables: [
     Users,
@@ -206,6 +240,8 @@ class LibraryItems extends Table {
     PendingRegistrations,
     InviteCodes,
     LibraryItems,
+    StorageData,
+    UserPlugins,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -214,7 +250,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration {
@@ -243,6 +279,12 @@ class AppDatabase extends _$AppDatabase {
         }
         if (from < 6) {
           await m.addColumn(libraryItems, libraryItems.fileIndex);
+        }
+        if (from < 7) {
+          await m.createTable(storageData);
+        }
+        if (from < 8) {
+          await m.createTable(userPlugins);
         }
       },
     );
@@ -402,7 +444,13 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   Future<void> upsertTimelineEntry(TimelineEntriesCompanion entry) async {
-    await into(timelineEntries).insertOnConflictUpdate(entry);
+    await into(timelineEntries).insert(
+      entry,
+      onConflict: DoUpdate(
+        (old) => entry,
+        target: [timelineEntries.profileId, timelineEntries.hash],
+      ),
+    );
   }
 
   // =============== Bookmark Changes ===============
@@ -670,6 +718,39 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> deleteLibraryItem(String id) =>
       (delete(libraryItems)..where((l) => l.id.equals(id))).go();
+
+  // =============== Storage Data ===============
+
+  Future<StorageDataData?> getStorageData(int profileId, String key) =>
+      (select(storageData)
+            ..where((s) => s.profileId.equals(profileId) & s.key.equals(key)))
+          .getSingleOrNull();
+
+  Future<void> upsertStorageData(StorageDataCompanion data) async {
+    await into(storageData).insert(
+      data,
+      onConflict: DoUpdate(
+        (old) => data,
+        target: [storageData.profileId, storageData.key],
+      ),
+    );
+  }
+
+  // =============== User Plugins ===============
+
+  Future<List<UserPlugin>> getUserPlugins(String userId) =>
+      (select(userPlugins)..where((p) => p.userId.equals(userId))).get();
+
+  Future<UserPlugin?> getUserPluginById(int id) =>
+      (select(userPlugins)..where((p) => p.id.equals(id))).getSingleOrNull();
+
+  Future<UserPlugin> insertUserPlugin(UserPluginsCompanion plugin) async {
+    final id = await into(userPlugins).insert(plugin);
+    return (await getUserPluginById(id))!;
+  }
+
+  Future<void> deleteUserPlugin(int id) =>
+      (delete(userPlugins)..where((p) => p.id.equals(id))).go();
 }
 
 LazyDatabase _openConnection() {

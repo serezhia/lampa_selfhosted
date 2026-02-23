@@ -18,6 +18,12 @@
             "replace": "function url(){\n    return (window.location.protocol === 'https:' ? 'https://' : 'http://') + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
         },
         {
+            "file": "src/core/storage/workers.js",
+            "description": "Захардкодить домен для Storage Sync API",
+            "search": "function api(){\n    return Utils.protocol() + Manifest.cub_domain + '/api/'\n}",
+            "replace": "function api(){\n    return (window.location.protocol === 'https:' ? 'https://' : 'http://') + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
+        },
+        {
             "file": "src/interaction/settings/params.js",
             "description": "Android: добавить inner в player_torrent и сделать его по умолчанию",
             "search": "        select('player_torrent', {\n            'android': 'Android'\n        }, 'android')",

@@ -110,6 +110,8 @@ class TelegramBotService {
         .row()
         .add('👥 Профили', 'list_profiles')
         .row()
+        .add('🧩 Мои плагины', 'list_plugins')
+        .row()
         .add('👤 Мой аккаунт', 'my_profile');
   }
 
@@ -121,6 +123,8 @@ class TelegramBotService {
         .add('📱 Мои устройства', 'list_devices')
         .row()
         .add('👥 Профили', 'list_profiles')
+        .row()
+        .add('🧩 Мои плагины', 'list_plugins')
         .row()
         .add('👤 Мой аккаунт', 'my_profile');
 
@@ -941,6 +945,15 @@ class TelegramBotService {
             await _setProfileIcon(ctx, profileId, icon, messageId!);
           }
         }
+      } else if (data == 'list_plugins') {
+        await _showPluginsList(ctx, messageId: messageId, edit: true);
+      } else if (data == 'add_plugin') {
+        await _startAddPlugin(ctx, messageId!);
+      } else if (data.startsWith('delete_plugin_')) {
+        final pluginId = int.tryParse(data.substring(14));
+        if (pluginId != null) {
+          await _deletePlugin(ctx, pluginId, messageId!);
+        }
       }
       // ============= Admin callbacks =============
       else if (data == 'admin_menu') {
@@ -1488,6 +1501,35 @@ class TelegramBotService {
           'Добавлено номеров: ${phones.length}',
           replyMarkup: keyboard,
         );
+        return;
+      } else if (step == 'add_plugin') {
+        final url = inputText.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          await ctx.reply('❌ URL должен начинаться с http:// или https://');
+          return;
+        }
+
+        try {
+          final user =
+              await DataSource.instance.findUserByTelegramId(telegramUserId);
+          if (user != null) {
+            await DataSource.instance.addUserPlugin(user.id, url);
+            DataSource.instance.clearPendingNoticeCreation(telegramUserId);
+
+            final keyboard =
+                InlineKeyboard().add('« К списку плагинов', 'list_plugins');
+            await ctx.reply(
+              '✅ *Плагин добавлен!*\n\n'
+              'URL: `$url`\n\n'
+              'Перезапустите Lampa, чтобы изменения вступили в силу.',
+              parseMode: ParseMode.markdown,
+              replyMarkup: keyboard,
+            );
+          }
+        } catch (e) {
+          await ctx.reply(
+              '❌ Ошибка при добавлении плагина. Возможно, он уже существует.');
+        }
         return;
       } else if (step != null && step.startsWith('edit_')) {
         // Редактирование существующего уведомления
@@ -2992,5 +3034,107 @@ class TelegramBotService {
       parseMode: ParseMode.markdown,
       replyMarkup: keyboard,
     );
+  }
+
+  // ============= Управление плагинами =============
+
+  Future<void> _showPluginsList(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final user = await DataSource.instance.findUserByTelegramId(telegramUserId);
+
+    if (user == null) return;
+
+    final plugins = await DataSource.instance.getUserPlugins(user.id);
+
+    var keyboard =
+        InlineKeyboard().add('➕ Добавить плагин', 'add_plugin').row();
+
+    if (plugins.isEmpty) {
+      keyboard = keyboard.add('« Главное меню', 'main_menu');
+
+      const text = '🧩 *Ваши плагины*\n\nУ вас пока нет добавленных плагинов.';
+
+      if (edit && messageId != null) {
+        await ctx.api.editMessageText(
+          ChatID(ctx.chat!.id),
+          messageId,
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      } else {
+        await ctx.reply(
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      }
+      return;
+    }
+
+    for (final plugin in plugins) {
+      final name = plugin.name ?? plugin.url.split('/').last;
+      final shortName = name.length > 25 ? '${name.substring(0, 22)}...' : name;
+      keyboard =
+          keyboard.add('❌ $shortName', 'delete_plugin_${plugin.id}').row();
+    }
+
+    keyboard = keyboard.add('« Главное меню', 'main_menu');
+
+    final text = '🧩 *Ваши плагины* (${plugins.length})\n\n'
+        'Нажмите на плагин, чтобы удалить его:';
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  Future<void> _startAddPlugin(Context ctx, int messageId) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+
+    DataSource.instance.setPendingNoticeCreation(telegramUserId, {
+      'step': 'add_plugin',
+    });
+
+    final keyboard = InlineKeyboard().add('❌ Отмена', 'list_plugins');
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      '➕ *Добавление плагина*\n\n'
+      'Отправьте URL плагина (должен начинаться с http:// или https://):',
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  Future<void> _deletePlugin(Context ctx, int pluginId, int messageId) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final user = await DataSource.instance.findUserByTelegramId(telegramUserId);
+
+    if (user == null) return;
+
+    final plugin = await DataSource.instance.db.getUserPluginById(pluginId);
+    if (plugin != null && plugin.userId == user.id) {
+      await DataSource.instance.removeUserPlugin(pluginId);
+    }
+
+    await _showPluginsList(ctx, messageId: messageId, edit: true);
   }
 }

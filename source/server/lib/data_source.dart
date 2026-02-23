@@ -550,7 +550,8 @@ class DataSource {
     final allowedPhones = await getAllowedPhones();
     if (allowedPhones.isEmpty) {
       print(
-          '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration',);
+        '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration',
+      );
       unawaited(stdout.flush());
       return false;
     }
@@ -691,6 +692,46 @@ class DataSource {
 
     return inviteCode.usesLeft > 0;
   }
+
+  // ============= Storage Data =============
+
+  Future<StorageDataData?> getStorageData(int profileId, String key) =>
+      _db.getStorageData(profileId, key);
+
+  Future<void> upsertStorageData(
+    int profileId,
+    String key,
+    String type,
+    String data,
+  ) async {
+    await _db.upsertStorageData(
+      StorageDataCompanion(
+        profileId: Value(profileId),
+        key: Value(key),
+        type: Value(type),
+        data: Value(data),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  // ============= User Plugins =============
+
+  Future<List<UserPlugin>> getUserPlugins(String userId) =>
+      _db.getUserPlugins(userId);
+
+  Future<UserPlugin> addUserPlugin(String userId, String url,
+      {String? name}) async {
+    return _db.insertUserPlugin(
+      UserPluginsCompanion(
+        userId: Value(userId),
+        url: Value(url),
+        name: Value(name),
+      ),
+    );
+  }
+
+  Future<void> removeUserPlugin(int id) => _db.deleteUserPlugin(id);
 
   // ============= Admin Telegram IDs =============
 

@@ -4814,6 +4814,681 @@ class LibraryItemsCompanion extends UpdateCompanion<LibraryItem> {
   }
 }
 
+class $StorageDataTable extends StorageData
+    with TableInfo<$StorageDataTable, StorageDataData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $StorageDataTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _profileIdMeta =
+      const VerificationMeta('profileId');
+  @override
+  late final GeneratedColumn<int> profileId = GeneratedColumn<int>(
+      'profile_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES profiles (id)'));
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+      'key', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+      'type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _dataMeta = const VerificationMeta('data');
+  @override
+  late final GeneratedColumn<String> data = GeneratedColumn<String>(
+      'data', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, profileId, key, type, data, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'storage_data';
+  @override
+  VerificationContext validateIntegrity(Insertable<StorageDataData> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('profile_id')) {
+      context.handle(_profileIdMeta,
+          profileId.isAcceptableOrUnknown(data['profile_id']!, _profileIdMeta));
+    } else if (isInserting) {
+      context.missing(_profileIdMeta);
+    }
+    if (data.containsKey('key')) {
+      context.handle(
+          _keyMeta, key.isAcceptableOrUnknown(data['key']!, _keyMeta));
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+          _typeMeta, type.isAcceptableOrUnknown(data['type']!, _typeMeta));
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('data')) {
+      context.handle(
+          _dataMeta, this.data.isAcceptableOrUnknown(data['data']!, _dataMeta));
+    } else if (isInserting) {
+      context.missing(_dataMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {profileId, key},
+      ];
+  @override
+  StorageDataData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return StorageDataData(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      profileId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}profile_id'])!,
+      key: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}key'])!,
+      type: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}type'])!,
+      data: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}data'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $StorageDataTable createAlias(String alias) {
+    return $StorageDataTable(attachedDatabase, alias);
+  }
+}
+
+class StorageDataData extends DataClass implements Insertable<StorageDataData> {
+  final int id;
+  final int profileId;
+  final String key;
+  final String type;
+  final String data;
+  final DateTime updatedAt;
+  const StorageDataData(
+      {required this.id,
+      required this.profileId,
+      required this.key,
+      required this.type,
+      required this.data,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['profile_id'] = Variable<int>(profileId);
+    map['key'] = Variable<String>(key);
+    map['type'] = Variable<String>(type);
+    map['data'] = Variable<String>(data);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  StorageDataCompanion toCompanion(bool nullToAbsent) {
+    return StorageDataCompanion(
+      id: Value(id),
+      profileId: Value(profileId),
+      key: Value(key),
+      type: Value(type),
+      data: Value(data),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory StorageDataData.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return StorageDataData(
+      id: serializer.fromJson<int>(json['id']),
+      profileId: serializer.fromJson<int>(json['profileId']),
+      key: serializer.fromJson<String>(json['key']),
+      type: serializer.fromJson<String>(json['type']),
+      data: serializer.fromJson<String>(json['data']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'profileId': serializer.toJson<int>(profileId),
+      'key': serializer.toJson<String>(key),
+      'type': serializer.toJson<String>(type),
+      'data': serializer.toJson<String>(data),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  StorageDataData copyWith(
+          {int? id,
+          int? profileId,
+          String? key,
+          String? type,
+          String? data,
+          DateTime? updatedAt}) =>
+      StorageDataData(
+        id: id ?? this.id,
+        profileId: profileId ?? this.profileId,
+        key: key ?? this.key,
+        type: type ?? this.type,
+        data: data ?? this.data,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  StorageDataData copyWithCompanion(StorageDataCompanion data) {
+    return StorageDataData(
+      id: data.id.present ? data.id.value : this.id,
+      profileId: data.profileId.present ? data.profileId.value : this.profileId,
+      key: data.key.present ? data.key.value : this.key,
+      type: data.type.present ? data.type.value : this.type,
+      data: data.data.present ? data.data.value : this.data,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StorageDataData(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('key: $key, ')
+          ..write('type: $type, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, profileId, key, type, data, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is StorageDataData &&
+          other.id == this.id &&
+          other.profileId == this.profileId &&
+          other.key == this.key &&
+          other.type == this.type &&
+          other.data == this.data &&
+          other.updatedAt == this.updatedAt);
+}
+
+class StorageDataCompanion extends UpdateCompanion<StorageDataData> {
+  final Value<int> id;
+  final Value<int> profileId;
+  final Value<String> key;
+  final Value<String> type;
+  final Value<String> data;
+  final Value<DateTime> updatedAt;
+  const StorageDataCompanion({
+    this.id = const Value.absent(),
+    this.profileId = const Value.absent(),
+    this.key = const Value.absent(),
+    this.type = const Value.absent(),
+    this.data = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  StorageDataCompanion.insert({
+    this.id = const Value.absent(),
+    required int profileId,
+    required String key,
+    required String type,
+    required String data,
+    this.updatedAt = const Value.absent(),
+  })  : profileId = Value(profileId),
+        key = Value(key),
+        type = Value(type),
+        data = Value(data);
+  static Insertable<StorageDataData> custom({
+    Expression<int>? id,
+    Expression<int>? profileId,
+    Expression<String>? key,
+    Expression<String>? type,
+    Expression<String>? data,
+    Expression<DateTime>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (profileId != null) 'profile_id': profileId,
+      if (key != null) 'key': key,
+      if (type != null) 'type': type,
+      if (data != null) 'data': data,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  StorageDataCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? profileId,
+      Value<String>? key,
+      Value<String>? type,
+      Value<String>? data,
+      Value<DateTime>? updatedAt}) {
+    return StorageDataCompanion(
+      id: id ?? this.id,
+      profileId: profileId ?? this.profileId,
+      key: key ?? this.key,
+      type: type ?? this.type,
+      data: data ?? this.data,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (profileId.present) {
+      map['profile_id'] = Variable<int>(profileId.value);
+    }
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (data.present) {
+      map['data'] = Variable<String>(data.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('StorageDataCompanion(')
+          ..write('id: $id, ')
+          ..write('profileId: $profileId, ')
+          ..write('key: $key, ')
+          ..write('type: $type, ')
+          ..write('data: $data, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $UserPluginsTable extends UserPlugins
+    with TableInfo<$UserPluginsTable, UserPlugin> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $UserPluginsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES users (id)'));
+  static const VerificationMeta _urlMeta = const VerificationMeta('url');
+  @override
+  late final GeneratedColumn<String> url = GeneratedColumn<String>(
+      'url', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<int> status = GeneratedColumn<int>(
+      'status', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _createdAtMeta =
+      const VerificationMeta('createdAt');
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+      'created_at', aliasedName, false,
+      type: DriftSqlType.dateTime,
+      requiredDuringInsert: false,
+      defaultValue: currentDateAndTime);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, userId, url, name, status, createdAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'user_plugins';
+  @override
+  VerificationContext validateIntegrity(Insertable<UserPlugin> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('url')) {
+      context.handle(
+          _urlMeta, url.isAcceptableOrUnknown(data['url']!, _urlMeta));
+    } else if (isInserting) {
+      context.missing(_urlMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(_createdAtMeta,
+          createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {userId, url},
+      ];
+  @override
+  UserPlugin map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return UserPlugin(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+      url: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}url'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name']),
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}status'])!,
+      createdAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+    );
+  }
+
+  @override
+  $UserPluginsTable createAlias(String alias) {
+    return $UserPluginsTable(attachedDatabase, alias);
+  }
+}
+
+class UserPlugin extends DataClass implements Insertable<UserPlugin> {
+  final int id;
+  final String userId;
+  final String url;
+  final String? name;
+  final int status;
+  final DateTime createdAt;
+  const UserPlugin(
+      {required this.id,
+      required this.userId,
+      required this.url,
+      this.name,
+      required this.status,
+      required this.createdAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['user_id'] = Variable<String>(userId);
+    map['url'] = Variable<String>(url);
+    if (!nullToAbsent || name != null) {
+      map['name'] = Variable<String>(name);
+    }
+    map['status'] = Variable<int>(status);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    return map;
+  }
+
+  UserPluginsCompanion toCompanion(bool nullToAbsent) {
+    return UserPluginsCompanion(
+      id: Value(id),
+      userId: Value(userId),
+      url: Value(url),
+      name: name == null && nullToAbsent ? const Value.absent() : Value(name),
+      status: Value(status),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory UserPlugin.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return UserPlugin(
+      id: serializer.fromJson<int>(json['id']),
+      userId: serializer.fromJson<String>(json['userId']),
+      url: serializer.fromJson<String>(json['url']),
+      name: serializer.fromJson<String?>(json['name']),
+      status: serializer.fromJson<int>(json['status']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'userId': serializer.toJson<String>(userId),
+      'url': serializer.toJson<String>(url),
+      'name': serializer.toJson<String?>(name),
+      'status': serializer.toJson<int>(status),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+    };
+  }
+
+  UserPlugin copyWith(
+          {int? id,
+          String? userId,
+          String? url,
+          Value<String?> name = const Value.absent(),
+          int? status,
+          DateTime? createdAt}) =>
+      UserPlugin(
+        id: id ?? this.id,
+        userId: userId ?? this.userId,
+        url: url ?? this.url,
+        name: name.present ? name.value : this.name,
+        status: status ?? this.status,
+        createdAt: createdAt ?? this.createdAt,
+      );
+  UserPlugin copyWithCompanion(UserPluginsCompanion data) {
+    return UserPlugin(
+      id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
+      url: data.url.present ? data.url.value : this.url,
+      name: data.name.present ? data.name.value : this.name,
+      status: data.status.present ? data.status.value : this.status,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserPlugin(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('url: $url, ')
+          ..write('name: $name, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userId, url, name, status, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is UserPlugin &&
+          other.id == this.id &&
+          other.userId == this.userId &&
+          other.url == this.url &&
+          other.name == this.name &&
+          other.status == this.status &&
+          other.createdAt == this.createdAt);
+}
+
+class UserPluginsCompanion extends UpdateCompanion<UserPlugin> {
+  final Value<int> id;
+  final Value<String> userId;
+  final Value<String> url;
+  final Value<String?> name;
+  final Value<int> status;
+  final Value<DateTime> createdAt;
+  const UserPluginsCompanion({
+    this.id = const Value.absent(),
+    this.userId = const Value.absent(),
+    this.url = const Value.absent(),
+    this.name = const Value.absent(),
+    this.status = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  UserPluginsCompanion.insert({
+    this.id = const Value.absent(),
+    required String userId,
+    required String url,
+    this.name = const Value.absent(),
+    this.status = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  })  : userId = Value(userId),
+        url = Value(url);
+  static Insertable<UserPlugin> custom({
+    Expression<int>? id,
+    Expression<String>? userId,
+    Expression<String>? url,
+    Expression<String>? name,
+    Expression<int>? status,
+    Expression<DateTime>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
+      if (url != null) 'url': url,
+      if (name != null) 'name': name,
+      if (status != null) 'status': status,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  UserPluginsCompanion copyWith(
+      {Value<int>? id,
+      Value<String>? userId,
+      Value<String>? url,
+      Value<String?>? name,
+      Value<int>? status,
+      Value<DateTime>? createdAt}) {
+    return UserPluginsCompanion(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      url: url ?? this.url,
+      name: name ?? this.name,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (url.present) {
+      map['url'] = Variable<String>(url.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<int>(status.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('UserPluginsCompanion(')
+          ..write('id: $id, ')
+          ..write('userId: $userId, ')
+          ..write('url: $url, ')
+          ..write('name: $name, ')
+          ..write('status: $status, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4833,6 +5508,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $PendingRegistrationsTable(this);
   late final $InviteCodesTable inviteCodes = $InviteCodesTable(this);
   late final $LibraryItemsTable libraryItems = $LibraryItemsTable(this);
+  late final $StorageDataTable storageData = $StorageDataTable(this);
+  late final $UserPluginsTable userPlugins = $UserPluginsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4849,7 +5526,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         settings,
         pendingRegistrations,
         inviteCodes,
-        libraryItems
+        libraryItems,
+        storageData,
+        userPlugins
       ];
 }
 
@@ -4922,6 +5601,20 @@ final class $$UsersTableReferences
         .filter((f) => f.userId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_libraryItemsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+
+  static MultiTypedResultKey<$UserPluginsTable, List<UserPlugin>>
+      _userPluginsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+          db.userPlugins,
+          aliasName: $_aliasNameGenerator(db.users.id, db.userPlugins.userId));
+
+  $$UserPluginsTableProcessedTableManager get userPluginsRefs {
+    final manager = $$UserPluginsTableTableManager($_db, $_db.userPlugins)
+        .filter((f) => f.userId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_userPluginsRefsTable($_db));
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: cache));
   }
@@ -5020,6 +5713,27 @@ class $$UsersTableFilterComposer extends Composer<_$AppDatabase, $UsersTable> {
             $$LibraryItemsTableFilterComposer(
               $db: $db,
               $table: $db.libraryItems,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+
+  Expression<bool> userPluginsRefs(
+      Expression<bool> Function($$UserPluginsTableFilterComposer f) f) {
+    final $$UserPluginsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.userPlugins,
+        getReferencedColumn: (t) => t.userId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UserPluginsTableFilterComposer(
+              $db: $db,
+              $table: $db.userPlugins,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -5171,6 +5885,27 @@ class $$UsersTableAnnotationComposer
             ));
     return f(composer);
   }
+
+  Expression<T> userPluginsRefs<T extends Object>(
+      Expression<T> Function($$UserPluginsTableAnnotationComposer a) f) {
+    final $$UserPluginsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.userPlugins,
+        getReferencedColumn: (t) => t.userId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UserPluginsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.userPlugins,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$UsersTableTableManager extends RootTableManager<
@@ -5185,7 +5920,10 @@ class $$UsersTableTableManager extends RootTableManager<
     (User, $$UsersTableReferences),
     User,
     PrefetchHooks Function(
-        {bool profilesRefs, bool devicesRefs, bool libraryItemsRefs})> {
+        {bool profilesRefs,
+        bool devicesRefs,
+        bool libraryItemsRefs,
+        bool userPluginsRefs})> {
   $$UsersTableTableManager(_$AppDatabase db, $UsersTable table)
       : super(TableManagerState(
           db: db,
@@ -5255,13 +5993,15 @@ class $$UsersTableTableManager extends RootTableManager<
           prefetchHooksCallback: (
               {profilesRefs = false,
               devicesRefs = false,
-              libraryItemsRefs = false}) {
+              libraryItemsRefs = false,
+              userPluginsRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (profilesRefs) db.profiles,
                 if (devicesRefs) db.devices,
-                if (libraryItemsRefs) db.libraryItems
+                if (libraryItemsRefs) db.libraryItems,
+                if (userPluginsRefs) db.userPlugins
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
@@ -5299,6 +6039,18 @@ class $$UsersTableTableManager extends RootTableManager<
                         referencedItemsForCurrentItem: (item,
                                 referencedItems) =>
                             referencedItems.where((e) => e.userId == item.id),
+                        typedResults: items),
+                  if (userPluginsRefs)
+                    await $_getPrefetchedData<User, $UsersTable, UserPlugin>(
+                        currentTable: table,
+                        referencedTable:
+                            $$UsersTableReferences._userPluginsRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$UsersTableReferences(db, table, p0)
+                                .userPluginsRefs,
+                        referencedItemsForCurrentItem: (item,
+                                referencedItems) =>
+                            referencedItems.where((e) => e.userId == item.id),
                         typedResults: items)
                 ];
               },
@@ -5319,7 +6071,10 @@ typedef $$UsersTableProcessedTableManager = ProcessedTableManager<
     (User, $$UsersTableReferences),
     User,
     PrefetchHooks Function(
-        {bool profilesRefs, bool devicesRefs, bool libraryItemsRefs})>;
+        {bool profilesRefs,
+        bool devicesRefs,
+        bool libraryItemsRefs,
+        bool userPluginsRefs})>;
 typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   Value<int> id,
   required String userId,
@@ -5421,6 +6176,21 @@ final class $$ProfilesTableReferences
 
     final cache =
         $_typedResult.readTableOrNull(_profileVersionsRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
+
+  static MultiTypedResultKey<$StorageDataTable, List<StorageDataData>>
+      _storageDataRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+          db.storageData,
+          aliasName:
+              $_aliasNameGenerator(db.profiles.id, db.storageData.profileId));
+
+  $$StorageDataTableProcessedTableManager get storageDataRefs {
+    final manager = $$StorageDataTableTableManager($_db, $_db.storageData)
+        .filter((f) => f.profileId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_storageDataRefsTable($_db));
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: cache));
   }
@@ -5552,6 +6322,27 @@ class $$ProfilesTableFilterComposer
             $$ProfileVersionsTableFilterComposer(
               $db: $db,
               $table: $db.profileVersions,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
+
+  Expression<bool> storageDataRefs(
+      Expression<bool> Function($$StorageDataTableFilterComposer f) f) {
+    final $$StorageDataTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.storageData,
+        getReferencedColumn: (t) => t.profileId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$StorageDataTableFilterComposer(
+              $db: $db,
+              $table: $db.storageData,
               $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
               joinBuilder: joinBuilder,
               $removeJoinBuilderFromRootComposer:
@@ -5745,6 +6536,27 @@ class $$ProfilesTableAnnotationComposer
             ));
     return f(composer);
   }
+
+  Expression<T> storageDataRefs<T extends Object>(
+      Expression<T> Function($$StorageDataTableAnnotationComposer a) f) {
+    final $$StorageDataTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.storageData,
+        getReferencedColumn: (t) => t.profileId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$StorageDataTableAnnotationComposer(
+              $db: $db,
+              $table: $db.storageData,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$ProfilesTableTableManager extends RootTableManager<
@@ -5763,7 +6575,8 @@ class $$ProfilesTableTableManager extends RootTableManager<
         bool bookmarksRefs,
         bool timelineEntriesRefs,
         bool bookmarkChangesRefs,
-        bool profileVersionsRefs})> {
+        bool profileVersionsRefs,
+        bool storageDataRefs})> {
   $$ProfilesTableTableManager(_$AppDatabase db, $ProfilesTable table)
       : super(TableManagerState(
           db: db,
@@ -5823,14 +6636,16 @@ class $$ProfilesTableTableManager extends RootTableManager<
               bookmarksRefs = false,
               timelineEntriesRefs = false,
               bookmarkChangesRefs = false,
-              profileVersionsRefs = false}) {
+              profileVersionsRefs = false,
+              storageDataRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (bookmarksRefs) db.bookmarks,
                 if (timelineEntriesRefs) db.timelineEntries,
                 if (bookmarkChangesRefs) db.bookmarkChanges,
-                if (profileVersionsRefs) db.profileVersions
+                if (profileVersionsRefs) db.profileVersions,
+                if (storageDataRefs) db.storageData
               ],
               addJoins: <
                   T extends TableManagerState<
@@ -5910,6 +6725,19 @@ class $$ProfilesTableTableManager extends RootTableManager<
                         referencedItemsForCurrentItem:
                             (item, referencedItems) => referencedItems
                                 .where((e) => e.profileId == item.id),
+                        typedResults: items),
+                  if (storageDataRefs)
+                    await $_getPrefetchedData<Profile, $ProfilesTable,
+                            StorageDataData>(
+                        currentTable: table,
+                        referencedTable:
+                            $$ProfilesTableReferences._storageDataRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$ProfilesTableReferences(db, table, p0)
+                                .storageDataRefs,
+                        referencedItemsForCurrentItem:
+                            (item, referencedItems) => referencedItems
+                                .where((e) => e.profileId == item.id),
                         typedResults: items)
                 ];
               },
@@ -5934,7 +6762,8 @@ typedef $$ProfilesTableProcessedTableManager = ProcessedTableManager<
         bool bookmarksRefs,
         bool timelineEntriesRefs,
         bool bookmarkChangesRefs,
-        bool profileVersionsRefs})>;
+        bool profileVersionsRefs,
+        bool storageDataRefs})>;
 typedef $$DevicesTableCreateCompanionBuilder = DevicesCompanion Function({
   required String id,
   required String userId,
@@ -8552,6 +9381,573 @@ typedef $$LibraryItemsTableProcessedTableManager = ProcessedTableManager<
     (LibraryItem, $$LibraryItemsTableReferences),
     LibraryItem,
     PrefetchHooks Function({bool userId})>;
+typedef $$StorageDataTableCreateCompanionBuilder = StorageDataCompanion
+    Function({
+  Value<int> id,
+  required int profileId,
+  required String key,
+  required String type,
+  required String data,
+  Value<DateTime> updatedAt,
+});
+typedef $$StorageDataTableUpdateCompanionBuilder = StorageDataCompanion
+    Function({
+  Value<int> id,
+  Value<int> profileId,
+  Value<String> key,
+  Value<String> type,
+  Value<String> data,
+  Value<DateTime> updatedAt,
+});
+
+final class $$StorageDataTableReferences
+    extends BaseReferences<_$AppDatabase, $StorageDataTable, StorageDataData> {
+  $$StorageDataTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ProfilesTable _profileIdTable(_$AppDatabase db) =>
+      db.profiles.createAlias(
+          $_aliasNameGenerator(db.storageData.profileId, db.profiles.id));
+
+  $$ProfilesTableProcessedTableManager get profileId {
+    final $_column = $_itemColumn<int>('profile_id')!;
+
+    final manager = $$ProfilesTableTableManager($_db, $_db.profiles)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_profileIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$StorageDataTableFilterComposer
+    extends Composer<_$AppDatabase, $StorageDataTable> {
+  $$StorageDataTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+
+  $$ProfilesTableFilterComposer get profileId {
+    final $$ProfilesTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.profileId,
+        referencedTable: $db.profiles,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ProfilesTableFilterComposer(
+              $db: $db,
+              $table: $db.profiles,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$StorageDataTableOrderingComposer
+    extends Composer<_$AppDatabase, $StorageDataTable> {
+  $$StorageDataTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get type => $composableBuilder(
+      column: $table.type, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get data => $composableBuilder(
+      column: $table.data, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+
+  $$ProfilesTableOrderingComposer get profileId {
+    final $$ProfilesTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.profileId,
+        referencedTable: $db.profiles,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ProfilesTableOrderingComposer(
+              $db: $db,
+              $table: $db.profiles,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$StorageDataTableAnnotationComposer
+    extends Composer<_$AppDatabase, $StorageDataTable> {
+  $$StorageDataTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<String> get data =>
+      $composableBuilder(column: $table.data, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$ProfilesTableAnnotationComposer get profileId {
+    final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.profileId,
+        referencedTable: $db.profiles,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$ProfilesTableAnnotationComposer(
+              $db: $db,
+              $table: $db.profiles,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$StorageDataTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $StorageDataTable,
+    StorageDataData,
+    $$StorageDataTableFilterComposer,
+    $$StorageDataTableOrderingComposer,
+    $$StorageDataTableAnnotationComposer,
+    $$StorageDataTableCreateCompanionBuilder,
+    $$StorageDataTableUpdateCompanionBuilder,
+    (StorageDataData, $$StorageDataTableReferences),
+    StorageDataData,
+    PrefetchHooks Function({bool profileId})> {
+  $$StorageDataTableTableManager(_$AppDatabase db, $StorageDataTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$StorageDataTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$StorageDataTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$StorageDataTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> profileId = const Value.absent(),
+            Value<String> key = const Value.absent(),
+            Value<String> type = const Value.absent(),
+            Value<String> data = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              StorageDataCompanion(
+            id: id,
+            profileId: profileId,
+            key: key,
+            type: type,
+            data: data,
+            updatedAt: updatedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int profileId,
+            required String key,
+            required String type,
+            required String data,
+            Value<DateTime> updatedAt = const Value.absent(),
+          }) =>
+              StorageDataCompanion.insert(
+            id: id,
+            profileId: profileId,
+            key: key,
+            type: type,
+            data: data,
+            updatedAt: updatedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$StorageDataTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({profileId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (profileId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.profileId,
+                    referencedTable:
+                        $$StorageDataTableReferences._profileIdTable(db),
+                    referencedColumn:
+                        $$StorageDataTableReferences._profileIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$StorageDataTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $StorageDataTable,
+    StorageDataData,
+    $$StorageDataTableFilterComposer,
+    $$StorageDataTableOrderingComposer,
+    $$StorageDataTableAnnotationComposer,
+    $$StorageDataTableCreateCompanionBuilder,
+    $$StorageDataTableUpdateCompanionBuilder,
+    (StorageDataData, $$StorageDataTableReferences),
+    StorageDataData,
+    PrefetchHooks Function({bool profileId})>;
+typedef $$UserPluginsTableCreateCompanionBuilder = UserPluginsCompanion
+    Function({
+  Value<int> id,
+  required String userId,
+  required String url,
+  Value<String?> name,
+  Value<int> status,
+  Value<DateTime> createdAt,
+});
+typedef $$UserPluginsTableUpdateCompanionBuilder = UserPluginsCompanion
+    Function({
+  Value<int> id,
+  Value<String> userId,
+  Value<String> url,
+  Value<String?> name,
+  Value<int> status,
+  Value<DateTime> createdAt,
+});
+
+final class $$UserPluginsTableReferences
+    extends BaseReferences<_$AppDatabase, $UserPluginsTable, UserPlugin> {
+  $$UserPluginsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $UsersTable _userIdTable(_$AppDatabase db) => db.users
+      .createAlias($_aliasNameGenerator(db.userPlugins.userId, db.users.id));
+
+  $$UsersTableProcessedTableManager get userId {
+    final $_column = $_itemColumn<String>('user_id')!;
+
+    final manager = $$UsersTableTableManager($_db, $_db.users)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_userIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$UserPluginsTableFilterComposer
+    extends Composer<_$AppDatabase, $UserPluginsTable> {
+  $$UserPluginsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get url => $composableBuilder(
+      column: $table.url, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  $$UsersTableFilterComposer get userId {
+    final $$UsersTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableFilterComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$UserPluginsTableOrderingComposer
+    extends Composer<_$AppDatabase, $UserPluginsTable> {
+  $$UserPluginsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get url => $composableBuilder(
+      column: $table.url, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+      column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  $$UsersTableOrderingComposer get userId {
+    final $$UsersTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableOrderingComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$UserPluginsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $UserPluginsTable> {
+  $$UserPluginsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get url =>
+      $composableBuilder(column: $table.url, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  $$UsersTableAnnotationComposer get userId {
+    final $$UsersTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.userId,
+        referencedTable: $db.users,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$UsersTableAnnotationComposer(
+              $db: $db,
+              $table: $db.users,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$UserPluginsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $UserPluginsTable,
+    UserPlugin,
+    $$UserPluginsTableFilterComposer,
+    $$UserPluginsTableOrderingComposer,
+    $$UserPluginsTableAnnotationComposer,
+    $$UserPluginsTableCreateCompanionBuilder,
+    $$UserPluginsTableUpdateCompanionBuilder,
+    (UserPlugin, $$UserPluginsTableReferences),
+    UserPlugin,
+    PrefetchHooks Function({bool userId})> {
+  $$UserPluginsTableTableManager(_$AppDatabase db, $UserPluginsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$UserPluginsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$UserPluginsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$UserPluginsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<String> userId = const Value.absent(),
+            Value<String> url = const Value.absent(),
+            Value<String?> name = const Value.absent(),
+            Value<int> status = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+          }) =>
+              UserPluginsCompanion(
+            id: id,
+            userId: userId,
+            url: url,
+            name: name,
+            status: status,
+            createdAt: createdAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required String userId,
+            required String url,
+            Value<String?> name = const Value.absent(),
+            Value<int> status = const Value.absent(),
+            Value<DateTime> createdAt = const Value.absent(),
+          }) =>
+              UserPluginsCompanion.insert(
+            id: id,
+            userId: userId,
+            url: url,
+            name: name,
+            status: status,
+            createdAt: createdAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$UserPluginsTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({userId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (userId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.userId,
+                    referencedTable:
+                        $$UserPluginsTableReferences._userIdTable(db),
+                    referencedColumn:
+                        $$UserPluginsTableReferences._userIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$UserPluginsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $UserPluginsTable,
+    UserPlugin,
+    $$UserPluginsTableFilterComposer,
+    $$UserPluginsTableOrderingComposer,
+    $$UserPluginsTableAnnotationComposer,
+    $$UserPluginsTableCreateCompanionBuilder,
+    $$UserPluginsTableUpdateCompanionBuilder,
+    (UserPlugin, $$UserPluginsTableReferences),
+    UserPlugin,
+    PrefetchHooks Function({bool userId})>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -8580,4 +9976,8 @@ class $AppDatabaseManager {
       $$InviteCodesTableTableManager(_db, _db.inviteCodes);
   $$LibraryItemsTableTableManager get libraryItems =>
       $$LibraryItemsTableTableManager(_db, _db.libraryItems);
+  $$StorageDataTableTableManager get storageData =>
+      $$StorageDataTableTableManager(_db, _db.storageData);
+  $$UserPluginsTableTableManager get userPlugins =>
+      $$UserPluginsTableTableManager(_db, _db.userPlugins);
 }

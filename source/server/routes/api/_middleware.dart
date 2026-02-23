@@ -21,23 +21,28 @@ Handler middleware(Handler handler) {
       return handler(context);
     }
 
-    // For downloads, try to get profile but don\'t require it
-    if (context.request.uri.path.contains('/downloads/')) {
-      print('[MIDDLEWARE] Downloads endpoint');
+    // For downloads and plugins, try to get user/profile but don't require it
+    if (context.request.uri.path.contains('/downloads/') ||
+        context.request.uri.path.contains('/plugins/all')) {
+      print('[MIDDLEWARE] Optional auth endpoint');
       final token = context.request.headers['token'];
       final profileIdStr = context.request.headers['profile'];
       print('[MIDDLEWARE] token=$token, profile=$profileIdStr');
 
+      db.User? user;
       db.Profile? profile;
       if (token != null && token.isNotEmpty) {
         try {
           final device = await DataSource.instance.getDeviceByToken(token);
           print('[MIDDLEWARE] Device found: ${device?.id}');
-          if (device != null && profileIdStr != null) {
-            final profileId = int.tryParse(profileIdStr);
-            if (profileId != null) {
-              profile = await DataSource.instance.getProfileById(profileId);
-              print('[MIDDLEWARE] Profile found: ${profile?.id}');
+          if (device != null) {
+            user = await DataSource.instance.db.getUserById(device.userId);
+            if (profileIdStr != null) {
+              final profileId = int.tryParse(profileIdStr);
+              if (profileId != null) {
+                profile = await DataSource.instance.getProfileById(profileId);
+                print('[MIDDLEWARE] Profile found: ${profile?.id}');
+              }
             }
           }
         } catch (e) {
@@ -45,8 +50,12 @@ Handler middleware(Handler handler) {
         }
       }
 
-      print('[MIDDLEWARE] Passing profile: ${profile?.id}');
-      return handler(context.provide<db.Profile?>(() => profile));
+      print('[MIDDLEWARE] Passing user: ${user?.id}, profile: ${profile?.id}');
+      return handler(
+        context
+            .provide<db.User?>(() => user)
+            .provide<db.Profile?>(() => profile),
+      );
     }
 
     final token = context.request.headers['token'];
