@@ -15,5 +15,5 @@ Future<HttpServer> run(Handler handler, InternetAddress ip, int port) async {
   DownloadService.instance.init();
 
   // Start HTTP server
-  return serve(handler, ip, port);
+  return serve(handler, InternetAddress.anyIPv4, port);
 }
