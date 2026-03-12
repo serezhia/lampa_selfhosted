@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 --branch ${LAMPA_BRANCH} ${LAMPA_REPO} .
 
 # Копируем файлы патчей и build скрипт
-COPY patches.json apply-modifications.js build.js ./
+COPY patches.json apply-modifications.js build.js site.webmanifest ./
 
 # Устанавливаем зависимости
 RUN npm install
@@ -48,7 +48,9 @@ RUN echo "🔍 Checking if patches applied for domain: ${DOMAIN}" && \
 
 # Создаем директорию для финальной сборки
 RUN mkdir -p /build_output && \
-    cp -r build/github/lampa/* /build_output/
+    cp -r build/github/lampa/* /build_output/ && \
+    mkdir -p /build_output/icons && \
+    cp site.webmanifest /build_output/icons/
 
 # Stage 2: Nginx
 FROM nginx:alpine
@@ -66,6 +68,8 @@ RUN mkdir -p /plugins/builtin /plugins/custom /usr/share/nginx/html/plugins
 # Копируем entrypoint скрипт
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+# Fix line endings for Windows
+RUN sed -i 's/\r$//' /entrypoint.sh
 
 # Добавляем скрипт для загрузки modification.js в index.html
 # Вставляем тег <script> перед закрывающим </body>

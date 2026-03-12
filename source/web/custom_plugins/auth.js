@@ -169,7 +169,7 @@
                         <svg viewBox="0 0 24 24"><path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3zm-1.06 13.54L7.4 12l1.41-1.41 2.12 2.12 4.24-4.24 1.41 1.41-5.64 5.66z"/></svg>\
                     </div>\
                     <div class="auth-title">Требуется авторизация</div>\
-                    <div class="auth-desc">Для получения 6-значного кода<br>напишите боту: <b>' + TELEGRAM_BOT + '</b></div>\
+                    <div class="auth-desc">Для получения 6-значного кода<br>напишите боту: <b class="auth-bot-link" data-bot="' + TELEGRAM_BOT + '">' + TELEGRAM_BOT + '</b></div>\
                     <div class="auth-code">\
                         <div></div>\
                         <div></div>\
@@ -298,6 +298,27 @@
             });
         }
 
+        // Обработка клика по имени бота
+        html.find('.auth-bot-link').on('click', function () {
+            var botName = $(this).data('bot').replace('@', '');
+
+            // Копируем в буфер обмена
+            var tempInput = document.createElement("input");
+            tempInput.value = '@' + botName;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+
+            try {
+                document.execCommand("copy");
+                Lampa.Noty.show('Имя бота скопировано');
+            } catch (err) { }
+
+            document.body.removeChild(tempInput);
+
+            // Открываем диплинк
+            window.open('https://t.me/' + botName, '_blank');
+        });
+
         // Обработка нажатия на кнопку (для ПК клики, для ТВ hover:enter)
         keyboard.find('[data-key]').on('hover:enter', function () {
             var key = $(this).data('key');
@@ -399,6 +420,10 @@
                 if (currentCode.length > 0) {
                     removeNum();
                 }
+            } else if (e.keyCode >= 48 && e.keyCode <= 57) { // 0-9 main keyboard
+                addNum((e.keyCode - 48).toString());
+            } else if (e.keyCode >= 96 && e.keyCode <= 105) { // 0-9 numpad
+                addNum((e.keyCode - 96).toString());
             }
 
             return false; // Дополнительная блокировка
@@ -492,6 +517,19 @@
             }\
             .auth-desc b {\
                 color: #fff;\
+            }\
+            .auth-bot-link {\
+                cursor: pointer;\
+                text-decoration: none;\
+                border-bottom: 1px dashed rgba(255,255,255,0.5);\
+                padding: 0.2em 0.5em;\
+                border-radius: 0.2em;\
+                transition: background 0.15s, border-color 0.15s;\
+                display: inline-block;\
+            }\
+            .auth-bot-link:hover {\
+                background: rgba(255,255,255,0.2);\
+                border-color: transparent;\
             }\
             .auth-code {\
                 display: flex;\

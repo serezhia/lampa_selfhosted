@@ -1,5 +1,6 @@
 // ignore_for_file: public_member_api_docs
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -7,6 +8,7 @@ import 'dart:math';
 import 'package:drift/drift.dart';
 import 'package:lampa_server/database/database.dart';
 import 'package:lampa_server/services/transcoding_service.dart';
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
 
 /// Источник данных для приложения (Singleton)
 /// Обёртка над Drift базой данных
@@ -17,6 +19,12 @@ class DataSource {
   }
 
   static final DataSource instance = DataSource._();
+
+  /// Количество использований для безлимитных инвайт-кодов
+  static const int unlimitedUsesCount = 999999;
+
+  /// Общий экземпляр Random.secure() для генерации кодов
+  static final Random _secureRandom = Random.secure();
 
   late final AppDatabase _db;
   late final TranscodingService _transcoding;
@@ -475,6 +483,278 @@ class DataSource {
 
   void clearPendingNoticeCreation(String telegramUserId) {
     _pendingNoticeCreation.remove(telegramUserId);
+  }
+
+  // ============= User Management (Admin) =============
+
+  /// Получить всех пользователей
+  Future<List<User>> getAllUsers() => _db.getAllUsers();
+
+  /// Получить пользователей с пагинацией
+  Future<(List<User>, int)> getUsersPage({
+    required int offset,
+    required int limit,
+  }) =>
+      _db.getUsersPage(offset: offset, limit: limit);
+
+  /// Заблокировать пользователя
+  Future<void> blockUser(String userId) => _db.blockUser(userId);
+
+  /// Разблокировать пользователя
+  Future<void> unblockUser(String userId) => _db.unblockUser(userId);
+
+  /// Удалить пользователя со всеми данными
+  Future<void> deleteUserWithData(String userId) =>
+      _db.deleteUserWithData(userId);
+
+  /// Получить пользователя по ID
+  Future<User?> getUserById(String id) => _db.getUserById(id);
+
+  // ============= Registration Settings =============
+
+  /// Режимы регистрации:
+  /// - 'free' - свободная регистрация
+  /// - 'approval' - требуется одобрение админа
+  /// - 'allowed_phones' - только разрешённые номера
+  /// - 'invite_code' - по инвайт-коду
+  static const registrationModeKey = 'registration_mode';
+  static const allowedPhonesKey = 'allowed_phones';
+
+  /// Получить текущий режим регистрации
+  Future<String> getRegistrationMode() async {
+    final mode = await _db.getSetting(registrationModeKey);
+    return mode ?? 'free';
+  }
+
+  /// Установить режим регистрации
+  Future<void> setRegistrationMode(String mode) async {
+    await _db.setSetting(registrationModeKey, mode);
+  }
+
+  /// Получить список разрешённых телефонов
+  Future<List<String>> getAllowedPhones() async {
+    final phones = await _db.getSetting(allowedPhonesKey);
+    if (phones == null || phones.isEmpty) return [];
+    return phones.split(',').map((p) => p.trim()).toList();
+  }
+
+  /// Установить список разрешённых телефонов
+  Future<void> setAllowedPhones(List<String> phones) async {
+    await _db.setSetting(allowedPhonesKey, phones.join(','));
+  }
+
+  /// Проверить, разрешён ли телефон для регистрации
+  /// Возвращает false если список разрешённых номеров пуст (deny all)
+  /// ВНИМАНИЕ: если режим allowed_phones установлен, но список пуст — регистрация невозможна
+  Future<bool> isPhoneAllowed(String phone) async {
+    final allowedPhones = await getAllowedPhones();
+    if (allowedPhones.isEmpty) {
+      print(
+        '[DataSource] WARNING: allowed_phones mode is set but list is empty - denying registration',
+      );
+      unawaited(stdout.flush());
+      return false;
+    }
+    final normalizedPhone = phone.replaceAll(RegExp(r'[^\d]'), '');
+    return allowedPhones.any(
+      (allowed) => allowed.replaceAll(RegExp(r'[^\d]'), '') == normalizedPhone,
+    );
+  }
+
+  // ============= Pending Registrations =============
+
+  /// Получить все ожидающие регистрации
+  Future<List<PendingRegistration>> getAllPendingRegistrations() =>
+      _db.getAllPendingRegistrations();
+
+  /// Получить ожидающие регистрации с пагинацией
+  Future<(List<PendingRegistration>, int)> getPendingRegistrationsPage({
+    required int offset,
+    required int limit,
+  }) =>
+      _db.getPendingRegistrationsPage(offset: offset, limit: limit);
+
+  /// Получить ожидающую регистрацию по ID
+  Future<PendingRegistration?> getPendingRegistrationById(int id) =>
+      _db.getPendingRegistrationById(id);
+
+  /// Получить ожидающую регистрацию по Telegram ID
+  Future<PendingRegistration?> getPendingRegistrationByTelegramId(
+    String telegramId,
+  ) =>
+      _db.getPendingRegistrationByTelegramId(telegramId);
+
+  /// Создать ожидающую регистрацию
+  Future<PendingRegistration> createPendingRegistration({
+    required String telegramId,
+    required String phone,
+    String? firstName,
+    String? lastName,
+  }) async {
+    // Удаляем предыдущую заявку если есть
+    await _db.deletePendingRegistrationByTelegramId(telegramId);
+
+    return _db.insertPendingRegistration(
+      PendingRegistrationsCompanion(
+        telegramId: Value(telegramId),
+        phone: Value(phone),
+        firstName: Value(firstName),
+        lastName: Value(lastName),
+      ),
+    );
+  }
+
+  /// Удалить ожидающую регистрацию
+  Future<void> deletePendingRegistration(int id) =>
+      _db.deletePendingRegistration(id);
+
+  /// Одобрить регистрацию
+  Future<User?> approveRegistration(int pendingId) async {
+    final pending = await getPendingRegistrationById(pendingId);
+    if (pending == null) return null;
+
+    final user = await createUserFromContact(
+      telegramId: pending.telegramId,
+      phone: pending.phone,
+      firstName: pending.firstName,
+      lastName: pending.lastName,
+    );
+
+    await deletePendingRegistration(pendingId);
+    return user;
+  }
+
+  // ============= Invite Codes =============
+
+  /// Получить все инвайт-коды
+  Future<List<InviteCode>> getAllInviteCodes() => _db.getAllInviteCodes();
+
+  /// Получить инвайт-код по ID
+  Future<InviteCode?> getInviteCodeById(int id) => _db.getInviteCodeById(id);
+
+  /// Получить инвайт-код по коду
+  Future<InviteCode?> getInviteCodeByCode(String code) =>
+      _db.getInviteCodeByCode(code);
+
+  /// Создать инвайт-код
+  /// Использует retry loop для обработки редких коллизий кодов
+  Future<InviteCode> createInviteCode({
+    required bool oneTime,
+    int usesLeft = 1,
+    DateTime? expiresAt,
+  }) async {
+    const maxAttempts = 5;
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      // Генерируем случайный код
+      final code = List.generate(8, (_) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        return chars[_secureRandom.nextInt(chars.length)];
+      }).join();
+
+      try {
+        return await _db.insertInviteCode(
+          InviteCodesCompanion(
+            code: Value(code),
+            oneTime: Value(oneTime),
+            usesLeft: Value(usesLeft),
+            expiresAt: Value(expiresAt),
+          ),
+        );
+      } on SqliteException catch (e) {
+        // Retry only on UNIQUE constraint violation (code 2067)
+        if (e.extendedResultCode != 2067 || attempt == maxAttempts - 1) {
+          rethrow;
+        }
+        // Continue with a new code
+      }
+    }
+
+    // This code should not execute, but is needed for the compiler
+    throw StateError('Failed to generate unique invite code');
+  }
+
+  /// Удалить инвайт-код
+  Future<void> deleteInviteCode(int id) => _db.deleteInviteCode(id);
+
+  /// Использовать инвайт-код
+  Future<bool> useInviteCode(String code) => _db.useInviteCode(code);
+
+  /// Проверить валидность инвайт-кода (не используя его)
+  Future<bool> isInviteCodeValid(String code) async {
+    final inviteCode = await getInviteCodeByCode(code);
+    if (inviteCode == null) return false;
+
+    if (inviteCode.expiresAt != null &&
+        DateTime.now().isAfter(inviteCode.expiresAt!)) {
+      return false;
+    }
+
+    return inviteCode.usesLeft > 0;
+  }
+
+  // ============= Storage Data =============
+
+  Future<StorageDataData?> getStorageData(int profileId, String key) =>
+      _db.getStorageData(profileId, key);
+
+  Future<void> upsertStorageData(
+    int profileId,
+    String key,
+    String type,
+    String data,
+  ) async {
+    await _db.upsertStorageData(
+      StorageDataCompanion(
+        profileId: Value(profileId),
+        key: Value(key),
+        type: Value(type),
+        data: Value(data),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+  }
+
+  // ============= User Plugins =============
+
+  Future<List<UserPlugin>> getUserPlugins(String userId) =>
+      _db.getUserPlugins(userId);
+
+  Future<UserPlugin> addUserPlugin(String userId, String url,
+      {String? name}) async {
+    return _db.insertUserPlugin(
+      UserPluginsCompanion(
+        userId: Value(userId),
+        url: Value(url),
+        name: Value(name),
+      ),
+    );
+  }
+
+  Future<void> removeUserPlugin(int id) => _db.deleteUserPlugin(id);
+
+  // ============= Admin Telegram IDs =============
+
+  /// Получить Telegram ID всех админов
+  Future<List<String>> getAdminTelegramIds() async {
+    final phones = adminPhones;
+    if (phones.isEmpty) return [];
+
+    final allUsers = await _db.getAllUsers();
+    final adminIds = <String>[];
+
+    for (final user in allUsers) {
+      if (user.telegramId == null || user.phone == null) continue;
+      final normalizedPhone = user.phone!.replaceAll(RegExp(r'[^\d]'), '');
+      for (final adminPhone in phones) {
+        if (adminPhone.replaceAll(RegExp(r'[^\d]'), '') == normalizedPhone) {
+          adminIds.add(user.telegramId!);
+          break;
+        }
+      }
+    }
+
+    return adminIds;
   }
 
   // ============= Legacy compatibility =============

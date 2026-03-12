@@ -27,18 +27,40 @@
         videoHandlers: null,
         syncTimer: null,
         lastSyncSentAt: 0,
-        lastRemoteUpdateAt: 0,
         syncThreshold: CONFIG.defaultThreshold,
         pendingMedia: null,
         awaitingPrompt: false,
         lastMediaSignature: null,
         lastMediaOfferSentAt: 0,
-        isRemoteUpdate: false,
-        remoteUpdateTimer: null,
         playPauseTimer: null,
         isApplyingOffer: false,
-        playerActive: false
+        playerActive: false,
+        members: {}
     };
+
+    var ignoreEvents = {
+        play: false,
+        pause: false,
+        seek: false
+    };
+    var ignoreTimers = {};
+
+    function setIgnore(event) {
+        ignoreEvents[event] = true;
+        if (ignoreTimers[event]) clearTimeout(ignoreTimers[event]);
+        ignoreTimers[event] = setTimeout(function() {
+            ignoreEvents[event] = false;
+        }, 2000);
+    }
+
+    function checkIgnore(event) {
+        if (ignoreEvents[event]) {
+            ignoreEvents[event] = false;
+            if (ignoreTimers[event]) clearTimeout(ignoreTimers[event]);
+            return true;
+        }
+        return false;
+    }
 
     // WebSocket Client Wrapper (using standard WebSocket)
     var wsClient = {
@@ -173,27 +195,6 @@
         updateHeaderState();
     }
 
-    function resetAllState() {
-        log('Resetting all plugin state');
-        state.roomId = '';
-        state.isHost = false;
-        state.isConnected = false;
-        state.closing = false;
-        state.video = null;
-        state.videoHandlers = null;
-        state.syncTimer = null;
-        state.lastSyncSentAt = 0;
-        state.lastRemoteUpdateAt = 0;
-        state.pendingMedia = null;
-        state.awaitingPrompt = false;
-        state.lastMediaSignature = null;
-        state.isRemoteUpdate = false;
-        state.remoteUpdateTimer = null;
-        state.playPauseTimer = null;
-        state.isApplyingOffer = false;
-        state.playerActive = false;
-    }
-
     function persistRoomState() {
         // Do not persist room state to storage to ensure auto-logout on reload
         Lampa.Storage.set(CONFIG.storage.room, '');
@@ -234,6 +235,20 @@
             log('Generated new uid:', uid);
         }
         return uid;
+    }
+
+    function getProfileName() {
+        try {
+            var account = Lampa.Storage.get('account', '{}');
+            if (typeof account === 'string') account = JSON.parse(account);
+            if (account && account.profile && account.profile.name) {
+                return account.profile.name;
+            }
+            if (account && account.email) {
+                return account.email;
+            }
+        } catch (e) { }
+        return 'Гость';
     }
 
     function sanitizeForSend(value, seen) {
@@ -312,10 +327,6 @@
         return wsClient.socket && wsClient.socket.readyState === WebSocket.OPEN;
     }
 
-    function getVideo() {
-        return ensureVideoReference();
-    }
-
     function ensureVideoReference() {
         if (!Lampa.Player) return null;
 
@@ -337,22 +348,28 @@
         state.video = element;
         state.videoHandlers = {
             onPlay: function () {
-                log('Video Event: play (RemoteUpdate: ' + state.isRemoteUpdate + ')');
-                if (!state.isRemoteUpdate) {
-                    sendPlayPause(true);
+                log('Video Event: play');
+                if (checkIgnore('play')) {
+                    log('Ignoring remote play event');
+                    return;
                 }
+                sendPlayPause(true);
             },
             onPause: function () {
-                log('Video Event: pause (RemoteUpdate: ' + state.isRemoteUpdate + ')');
-                if (!state.isRemoteUpdate) {
-                    sendPlayPause(false);
+                log('Video Event: pause');
+                if (checkIgnore('pause')) {
+                    log('Ignoring remote pause event');
+                    return;
                 }
+                sendPlayPause(false);
             },
             onSeeking: function () {
-                log('Video Event: seeking (RemoteUpdate: ' + state.isRemoteUpdate + ')');
-                if (!state.isRemoteUpdate) {
-                    sendSyncState(true);
+                log('Video Event: seeking');
+                if (checkIgnore('seek')) {
+                    log('Ignoring remote seek event');
+                    return;
                 }
+                sendSyncState(true, true);
             }
         };
 
@@ -399,17 +416,18 @@
         }
     }
 
-    function sendSyncState(force) {
+    function sendSyncState(force, isSeek) {
         if (!isSocketReady()) return;
         var now = Date.now();
         if (!force && now - state.lastSyncSentAt < CONFIG.minSyncIntervalMs) return;
 
-        var video = getVideo();
+        var video = ensureVideoReference();
         if (!video) return;
 
         var payload = {
             time: video.currentTime,
-            is_playing: !video.paused
+            is_playing: !video.paused,
+            is_seek: !!isSeek
         };
 
         wsClient.send('sync_state', payload);
@@ -422,7 +440,7 @@
         if (state.playPauseTimer) clearTimeout(state.playPauseTimer);
 
         state.playPauseTimer = setTimeout(function () {
-            var video = getVideo();
+            var video = ensureVideoReference();
             if (!video) return;
 
             var payload = {
@@ -510,7 +528,7 @@
 
             var action = state.isHost ? 'create_room' : 'join_room';
             wsClient.send(action, {
-                // room_id is added automatically by send wrapper
+                profile_name: getProfileName()
             });
 
             ensureVideoReference();
@@ -551,6 +569,7 @@
                         persistRoomState();
                     }
                     state.isHost = true;
+                    if (data.members) state.members = data.members;
                     updateHeaderState();
                     ensureVideoReference();
                     startHostSyncLoop();
@@ -569,6 +588,7 @@
                     state.isHost = false;
                     state.pendingMedia = null;
                     state.awaitingPrompt = false;
+                    if (data.members) state.members = data.members;
                     persistRoomState();
                     notify('Совместный просмотр: подключено к ' + state.roomId);
                     updateHeaderState();
@@ -579,8 +599,7 @@
                     }, 500);
                 } else {
                     notify('Совместный просмотр: комната не найдена');
-                    state.roomId = '';
-                    state.isHost = false;
+                    clearRoomState();
                     persistRoomState();
                     updateHeaderState();
                 }
@@ -604,8 +623,10 @@
                 break;
 
             case 'user_joined':
+                if (data.members) state.members = data.members;
+                var joinedName = data.profile_name || 'Участник';
+                notify('Совместный просмотр: ' + joinedName + ' присоединился к комнате');
                 if (state.isHost) {
-                    notify('Совместный просмотр: к комнате подключился новый участник');
                     // Отправляем текущее медиа новому участнику
                     if (state.playerActive) {
                         setTimeout(function () {
@@ -618,10 +639,15 @@
                 break;
 
             case 'user_left':
-                if (state.isHost) {
-                    notify('Совместный просмотр: участник покинул комнату');
-                }
+                if (data.members) state.members = data.members;
+                var leftName = data.profile_name || 'Участник';
+                notify('Совместный просмотр: ' + leftName + ' покинул комнату');
                 updateHeaderState();
+                break;
+
+            case 'room_closed':
+                notify('Совместный просмотр: комната закрыта (хост вышел)');
+                leaveRoom(false);
                 break;
 
             case 'player_closed':
@@ -648,74 +674,60 @@
         }
     }
 
-    function applySyncState(data) {
-        log('Apply Sync:', data);
-        var video = getVideo();
+    function applyRemoteState(data, isPlayPause) {
+        log(isPlayPause ? 'Apply PlayPause:' : 'Apply Sync:', data);
+        var video = ensureVideoReference();
         if (!video) {
-            log('Apply Sync: No video element');
+            log('Apply: No video element');
             return;
         }
 
-        state.isRemoteUpdate = true;
-        try {
-            if (typeof data.time === 'number') {
-                var timeDiff = Math.abs(video.currentTime - data.time);
-                if (timeDiff > state.syncThreshold) {
-                    log('Apply Sync: Seeking from', video.currentTime, 'to', data.time);
-                    video.currentTime = data.time;
-                }
-            }
+        var actionName = data.profile_name || 'Участник';
 
-            if (typeof data.is_playing === 'boolean') {
-                log('Apply Sync: State paused:', video.paused, 'Target playing:', data.is_playing);
-                if (data.is_playing && video.paused) {
-                    log('Apply Sync: Calling play()');
+        if (typeof data.time === 'number') {
+            var threshold = isPlayPause ? state.syncThreshold / 2 : state.syncThreshold;
+            var timeDiff = Math.abs(video.currentTime - data.time);
+            if (timeDiff > threshold) {
+                log('Apply: Seeking from', video.currentTime, 'to', data.time);
+                if (!isPlayPause && data.is_seek && data.user_id && data.user_id !== getUid()) {
+                    notify('⏩ ' + actionName + ' перемотал видео');
+                }
+                setIgnore('seek');
+                video.currentTime = data.time;
+            }
+        }
+
+        if (typeof data.is_playing === 'boolean') {
+            log('Apply: State paused:', video.paused, 'Target playing:', data.is_playing);
+            if (data.is_playing && video.paused) {
+                log('Apply: Calling play()');
+                if (isPlayPause) notify('▶ ' + actionName + ' возобновил просмотр');
+                setIgnore('play');
+                if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.play === 'function') {
+                    Lampa.PlayerVideo.play();
+                } else {
                     playSilently(video);
                 }
-                if (!data.is_playing && !video.paused) {
-                    log('Apply Sync: Calling pause()');
+            }
+            if (!data.is_playing && !video.paused) {
+                log('Apply: Calling pause()');
+                if (isPlayPause) notify('⏸ ' + actionName + ' поставил на паузу');
+                setIgnore('pause');
+                if (Lampa.PlayerVideo && typeof Lampa.PlayerVideo.pause === 'function') {
+                    Lampa.PlayerVideo.pause();
+                } else {
                     video.pause();
                 }
             }
-        } finally {
-            setTimeout(function () { state.isRemoteUpdate = false; }, 500);
         }
-        state.lastRemoteUpdateAt = Date.now();
+    }
+
+    function applySyncState(data) {
+        applyRemoteState(data, false);
     }
 
     function applyPlayPause(data) {
-        log('Apply PlayPause:', data);
-        var video = getVideo();
-        if (!video) {
-            log('Apply PlayPause: No video element');
-            return;
-        }
-
-        state.isRemoteUpdate = true;
-        try {
-            if (typeof data.time === 'number') {
-                var timeDiff = Math.abs(video.currentTime - data.time);
-                if (timeDiff > state.syncThreshold / 2) {
-                    log('Apply PlayPause: Seeking from', video.currentTime, 'to', data.time);
-                    video.currentTime = data.time;
-                }
-            }
-
-            if (typeof data.is_playing === 'boolean') {
-                log('Apply PlayPause: State paused:', video.paused, 'Target playing:', data.is_playing);
-                if (data.is_playing && video.paused) {
-                    log('Apply PlayPause: Calling play()');
-                    playSilently(video);
-                }
-                if (!data.is_playing && !video.paused) {
-                    log('Apply PlayPause: Calling pause()');
-                    video.pause();
-                }
-            }
-        } finally {
-            setTimeout(function () { state.isRemoteUpdate = false; }, 500);
-        }
-        state.lastRemoteUpdateAt = Date.now();
+        applyRemoteState(data, true);
     }
 
     function playSilently(video) {
@@ -896,9 +908,45 @@
         } else {
             btn.find('svg').css('color', 'currentColor');
         }
+
+        var playerBtn = $('.player-panel__sync-player');
+        if (playerBtn.length) {
+            if (state.isConnected) {
+                playerBtn.find('svg').css('color', '#82ff98');
+            } else {
+                playerBtn.find('svg').css('color', 'currentColor');
+            }
+        }
     }
 
+    function addPlayerButton() {
+        if (!Lampa.PlayerPanel) return;
+        var panel = Lampa.PlayerPanel.render();
+        if (!panel) return;
+
+        if (panel.find('.player-panel__sync-player').length) return;
+
+        var btn = Lampa.Template.get('sync_player_button');
+        btn.on('hover:enter', function () {
+            showSyncMenu();
+        });
+
+        if (state.isConnected) {
+            btn.find('svg').css('color', '#82ff98');
+        } else {
+            btn.find('svg').css('color', 'currentColor');
+        }
+
+        panel.find('.player-panel__settings').after(btn);
+    }
+
+    var lastActiveController = 'content';
+
     function showSyncMenu() {
+        if (Lampa.Controller.enabled() && Lampa.Controller.enabled().name !== 'select') {
+            lastActiveController = Lampa.Controller.enabled().name;
+        }
+
         var items = [];
 
         var status = state.isConnected ? 'Подключено' : 'Не подключено';
@@ -925,6 +973,13 @@
                 action: showOpenRooms
             });
         } else {
+            var memberCount = Object.keys(state.members || {}).length;
+            items.push({
+                title: 'Участники',
+                subtitle: memberCount + ' чел.',
+                action: showMembersList
+            });
+
             // Показываем тип комнаты только для хоста
             if (state.isHost) {
                 items.push({
@@ -974,7 +1029,7 @@
                 if (item.action) item.action();
             },
             onBack: function () {
-                Lampa.Controller.toggle('content');
+                toggleBack();
             }
         });
     }
@@ -1005,6 +1060,39 @@
         });
     }
 
+    function showMembersList() {
+        var items = [];
+        var members = state.members || {};
+        var myUid = getUid();
+
+        Object.keys(members).forEach(function (uid) {
+            var name = members[uid];
+            var isMe = uid === myUid;
+            items.push({
+                title: name + (isMe ? ' (Вы)' : ''),
+                subtitle: 'Участник'
+            });
+        });
+
+        if (items.length === 0) {
+            items.push({
+                title: 'Нет участников',
+                subtitle: ''
+            });
+        }
+
+        Lampa.Select.show({
+            title: 'Участники комнаты',
+            items: items,
+            onSelect: function () {
+                showSyncMenu();
+            },
+            onBack: function () {
+                showSyncMenu();
+            }
+        });
+    }
+
     function initHeaderButton() {
         if ($('.open--sync-player').length) return;
 
@@ -1016,6 +1104,15 @@
 
         $('.head__actions .open--settings').before(button);
         updateHeaderState();
+    }
+
+    function toggleBack() {
+        if (state.playerActive) {
+            var isMobile = Lampa.Platform && Lampa.Platform.is && Lampa.Platform.is('mobile');
+            Lampa.Controller.toggle(isMobile ? 'player' : 'player_panel');
+        } else {
+            Lampa.Controller.toggle(lastActiveController || 'content');
+        }
     }
 
     function checkUrlParams() {
@@ -1031,21 +1128,20 @@
                     selected: true,
                     action: function () {
                         joinRoomFlow(code);
-                        Lampa.Controller.toggle('content');
                         clearSyncQueryParam();
                     }
                 }, {
                     title: 'Игнорировать',
                     action: function () {
                         clearSyncQueryParam();
-                        Lampa.Controller.toggle('content');
+                        toggleBack();
                     }
                 }],
                 onSelect: function (item) {
                     if (item && item.action) item.action();
                 },
                 onBack: function () {
-                    Lampa.Controller.toggle('content');
+                    toggleBack();
                 }
             });
         } catch (err) {
@@ -1094,12 +1190,7 @@
                         var isPublic = response.isPublic !== undefined ? response.isPublic : response.is_public;
 
                         if (response.success && roomId) {
-                            // Сбрасываем все состояние
-                            state.pendingMedia = null;
-                            state.awaitingPrompt = false;
-                            state.lastMediaSignature = null;
-                            state.isApplyingOffer = false;
-                            state.closing = false;
+                            clearRoomState();
 
                             state.roomId = roomId;
                             state.isHost = true;
@@ -1108,21 +1199,21 @@
                             connectWebSocket();
                             updateHeaderState();
                             notify('Комната ' + state.roomId + ' создана');
-                            Lampa.Controller.toggle('content');
+                            toggleBack();
                         } else {
                             log('createRoomFlow: response missing success or roomId (received:', JSON.stringify(response), ')');
                             notify('Ошибка: ' + (response.error || 'Не удалось создать комнату'));
-                            Lampa.Controller.toggle('content');
+                            toggleBack();
                         }
                     } catch (e) {
                         warn('Failed to parse create response:', e, 'responseText:', xhr.responseText);
                         notify('Ошибка создания комнаты');
-                        Lampa.Controller.toggle('content');
+                        toggleBack();
                     }
                 } else {
                     log('createRoomFlow: non-200 status=' + xhr.status);
                     notify('Ошибка создания комнаты (статус: ' + xhr.status + ')');
-                    Lampa.Controller.toggle('content');
+                    toggleBack();
                 }
             }
         };
@@ -1130,13 +1221,13 @@
         xhr.onerror = function () {
             log('createRoomFlow: onerror triggered');
             notify('Ошибка соединения');
-            Lampa.Controller.toggle('content');
+            toggleBack();
         };
 
         xhr.ontimeout = function () {
             log('createRoomFlow: timeout triggered');
             notify('Таймаут соединения');
-            Lampa.Controller.toggle('content');
+            toggleBack();
         };
 
         log('createRoomFlow: sending request');
@@ -1162,23 +1253,23 @@
                     } catch (e) {
                         log('Failed to parse rooms list:', e);
                         notify('Ошибка загрузки списка комнат');
-                        Lampa.Controller.toggle('content');
+                        toggleBack();
                     }
                 } else {
                     notify('Ошибка загрузки списка комнат');
-                    Lampa.Controller.toggle('content');
+                    toggleBack();
                 }
             }
         };
 
         xhr.onerror = function () {
             notify('Ошибка соединения');
-            Lampa.Controller.toggle('content');
+            toggleBack();
         };
 
         xhr.ontimeout = function () {
             notify('Таймаут соединения');
-            Lampa.Controller.toggle('content');
+            toggleBack();
         };
 
         xhr.send();
@@ -1251,12 +1342,30 @@
                             state.isPublic = response.isPublic !== undefined ? response.isPublic : (response.is_public !== undefined ? response.is_public : newIsPublic);
                             notify('Комната ' + (state.isPublic ? 'публичная' : 'приватная'));
                             showSyncMenu();
+                        } else {
+                            notify('Ошибка изменения типа комнаты');
+                            showSyncMenu();
                         }
                     } catch (e) {
                         warn('Failed to parse setpublic response:', e);
+                        notify('Ошибка изменения типа комнаты');
+                        showSyncMenu();
                     }
+                } else {
+                    notify('Ошибка соединения');
+                    showSyncMenu();
                 }
             }
+        };
+
+        xhr.onerror = function () {
+            notify('Ошибка соединения');
+            showSyncMenu();
+        };
+
+        xhr.ontimeout = function () {
+            notify('Таймаут соединения');
+            showSyncMenu();
         };
 
         xhr.send();
@@ -1272,6 +1381,8 @@
         }, function (code) {
             if (code) {
                 joinRoomFlow(code.trim());
+            } else {
+                toggleBack();
             }
         });
     }
@@ -1280,16 +1391,11 @@
         var normalized = normalizeRoomCode(code);
         if (!normalized) {
             notify('Совместный просмотр: некорректный код');
-            Lampa.Controller.toggle('content');
+            toggleBack();
             return;
         }
 
-        // Сбрасываем все состояние перед подключением
-        state.pendingMedia = null;
-        state.awaitingPrompt = false;
-        state.lastMediaSignature = null;
-        state.isApplyingOffer = false;
-        state.closing = false;
+        clearRoomState();
 
         state.roomId = normalized;
         state.isHost = false;
@@ -1297,13 +1403,10 @@
         connectWebSocket();
         updateHeaderState();
         notify('Совместный просмотр: подключаемся...');
-        Lampa.Controller.toggle('content');
+        toggleBack();
     }
 
-    function leaveRoom(clearStored) {
-        log('leaveRoom called, clearStored:', clearStored);
-
-        // Останавливаем все таймеры
+    function clearRoomState() {
         if (state.syncTimer) {
             clearInterval(state.syncTimer);
             state.syncTimer = null;
@@ -1312,15 +1415,7 @@
             clearTimeout(state.playPauseTimer);
             state.playPauseTimer = null;
         }
-        if (state.remoteUpdateTimer) {
-            clearTimeout(state.remoteUpdateTimer);
-            state.remoteUpdateTimer = null;
-        }
 
-        closeWebSocket('manual');
-        detachVideoListeners();
-
-        // Полная очистка состояния
         state.roomId = '';
         state.isHost = false;
         state.isConnected = false;
@@ -1330,13 +1425,23 @@
         state.lastMediaSignature = null;
         state.isApplyingOffer = false;
         state.lastSyncSentAt = 0;
-        state.lastRemoteUpdateAt = 0;
-        state.isRemoteUpdate = false;
+
+        ignoreEvents = { play: false, pause: false, seek: false };
+        for (var k in ignoreTimers) clearTimeout(ignoreTimers[k]);
+        ignoreTimers = {};
+    }
+
+    function leaveRoom(clearStored) {
+        log('leaveRoom called, clearStored:', clearStored);
+
+        closeWebSocket('manual');
+        detachVideoListeners();
+        clearRoomState();
 
         persistRoomState();
         updateHeaderState();
         notify('Совместный просмотр: отключено');
-        Lampa.Controller.toggle('content');
+        toggleBack();
     }
 
     function onPlayerStart(event) {
@@ -1379,6 +1484,8 @@
         log('onPlayerReady called, isHost:', state.isHost, 'isConnected:', state.isConnected);
         state.playerActive = true;
 
+        addPlayerButton();
+
         if (!isEnabled()) return;
         ensureVideoReference();
         maybeAutoConnect();
@@ -1408,6 +1515,8 @@
     }
 
     function initPlugin() {
+        Lampa.Template.add('sync_player_button', '<div class="player-panel__sync-player button selector" data-controller="player_panel">' + CONFIG.iconSvg + '</div>');
+
         loadStateFromStorage();
         initHeaderButton();
         checkUrlParams();

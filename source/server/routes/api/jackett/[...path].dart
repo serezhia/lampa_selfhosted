@@ -4,8 +4,8 @@ import 'dart:io';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:lampa_server/data_source.dart';
 
-/// Прокси для Jackett API - обработка всех вложенных путей
-/// /api/jackett/[...] -> http://jackett:9117/[...]
+/// Прокси для Jacred API - обработка всех вложенных путей (совместим с Jackett)
+/// /api/jackett/[...] -> http://jacred:9117/[...]
 ///
 /// Параметр [path] - все части пути после /api/jackett/
 Future<Response> onRequest(RequestContext context, String path) async {
@@ -16,7 +16,7 @@ Future<Response> onRequest(RequestContext context, String path) async {
   final deviceToken = queryParams['apikey'];
 
   if (deviceToken == null || deviceToken.isEmpty) {
-    print('[JACKETT_PROXY] Missing apikey (deviceToken)');
+    print('[JACRED_PROXY] Missing apikey (deviceToken)');
     return Response.json(
       statusCode: 401,
       body: {'error': 'Unauthorized: Missing API key'},
@@ -28,7 +28,7 @@ Future<Response> onRequest(RequestContext context, String path) async {
     final device = await DataSource.instance.getDeviceByToken(deviceToken);
 
     if (device == null) {
-      print('[JACKETT_PROXY] Invalid deviceToken: $deviceToken');
+      print('[JACRED_PROXY] Invalid deviceToken: $deviceToken');
       return Response.json(
         statusCode: 403,
         body: {'error': 'Forbidden: Invalid API key'},
@@ -38,38 +38,38 @@ Future<Response> onRequest(RequestContext context, String path) async {
     // Обновляем lastSeen
     await DataSource.instance.updateDeviceLastSeen(device.id);
 
-    // Получаем реальный API ключ Jackett
-    final jackettApiKey = Platform.environment['JACKETT_API_KEY'] ?? '';
-    final jackettHost = Platform.environment['JACKETT_HOST'] ?? 'jackett';
-    final jackettPort = Platform.environment['JACKETT_PORT'] ?? '9117';
+    // Получаем реальный API ключ Jacred
+    final jacredApiKey = Platform.environment['JACRED_API_KEY'] ?? '';
+    final jacredHost = Platform.environment['JACRED_HOST'] ?? 'jacred';
+    final jacredPort = Platform.environment['JACRED_PORT'] ?? '9117';
 
-    if (jackettApiKey.isEmpty) {
-      print('[JACKETT_PROXY] JACKETT_API_KEY not configured');
+    if (jacredApiKey.isEmpty) {
+      print('[JACRED_PROXY] JACRED_API_KEY not configured');
       return Response.json(
         statusCode: 500,
-        body: {'error': 'Server Error: Jackett not configured'},
+        body: {'error': 'Server Error: Jacred not configured'},
       );
     }
 
-    // Строим URL для Jackett с реальным apikey
+    // Строим URL для Jacred с реальным apikey
     final newParams = Map<String, String>.from(queryParams);
-    newParams['apikey'] = jackettApiKey;
+    newParams['apikey'] = jacredApiKey;
 
     // path содержит остаток пути после /api/jackett/
-    final jackettPath = '/$path';
+    final jacredPath = '/$path';
 
-    final jackettUri = Uri.http(
-      '$jackettHost:$jackettPort',
-      jackettPath,
+    final jacredUri = Uri.http(
+      '$jacredHost:$jacredPort',
+      jacredPath,
       newParams,
     );
 
-    print('[JACKETT_PROXY] Proxying to: $jackettUri');
+    print('[JACRED_PROXY] Proxying to: $jacredUri');
 
     // Проксируем запрос
     final client = HttpClient();
     try {
-      final request = await client.openUrl(method.value, jackettUri);
+      final request = await client.openUrl(method.value, jacredUri);
 
       // Копируем заголовки (кроме host, content-length, accept-encoding)
       // Важно: не передаём accept-encoding чтобы не получить сжатый ответ
@@ -103,7 +103,7 @@ Future<Response> onRequest(RequestContext context, String path) async {
         }
       });
 
-      print('[JACKETT_PROXY] Response status: ${response.statusCode}');
+      print('[JACRED_PROXY] Response status: ${response.statusCode}');
 
       return Response(
         statusCode: response.statusCode,
@@ -114,8 +114,8 @@ Future<Response> onRequest(RequestContext context, String path) async {
       client.close();
     }
   } catch (e, stack) {
-    print('[JACKETT_PROXY] Error: $e');
-    print('[JACKETT_PROXY] Stack: $stack');
+    print('[JACRED_PROXY] Error: $e');
+    print('[JACRED_PROXY] Stack: $stack');
     return Response.json(
       statusCode: 500,
       body: {'error': 'Proxy Error: $e'},

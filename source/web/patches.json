@@ -9,13 +9,19 @@
             "file": "src/core/socket.js",
             "description": "Захардкодить WebSocket URL на свой домен",
             "search": "    let socket_url = ws + mirror + pt\n\n    if(window.lampa_settings.socket_url) socket_url = window.lampa_settings.socket_url",
-            "replace": "    let socket_url = ws + '{{SELF_HOSTED_DOMAIN}}' + pt"
+            "replace": "    let socket_url = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + '{{SELF_HOSTED_DOMAIN}}' + '/socket'"
         },
         {
             "file": "src/core/account/api.js",
             "description": "Захардкодить домен для Account API",
             "search": "function url(){\n    return Utils.protocol() + Manifest.cub_domain + '/api/'\n}",
-            "replace": "function url(){\n    return Utils.protocol() + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
+            "replace": "function url(){\n    return (window.location.protocol === 'https:' ? 'https://' : 'http://') + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
+        },
+        {
+            "file": "src/core/storage/workers.js",
+            "description": "Захардкодить домен для Storage Sync API",
+            "search": "function api(){\n    return Utils.protocol() + Manifest.cub_domain + '/api/'\n}",
+            "replace": "function api(){\n    return (window.location.protocol === 'https:' ? 'https://' : 'http://') + '{{SELF_HOSTED_DOMAIN}}' + '/api/'\n}"
         },
         {
             "file": "src/interaction/settings/params.js",

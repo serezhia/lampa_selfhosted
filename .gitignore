@@ -4,10 +4,10 @@ data/*
 !data/README.md
 !data/plugins/.gitkeep
 !data/nginx/.gitkeep
-!data/jackett/
-data/jackett/*
-!data/jackett/config/.gitkeep
-!data/jackett/downloads/.gitkeep
+!data/jacred/
+data/jacred/*
+!data/jacred/config/.gitkeep
+!data/jacred/data/.gitkeep
 !data/database/.gitkeep
 !data/torrserver/
 data/torrserver/*
