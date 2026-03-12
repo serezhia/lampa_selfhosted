@@ -590,6 +590,8 @@ create_dirs() {
     mkdir -p "$INSTALL_DIR/data/database"
     debug "Creating: $INSTALL_DIR/data/transcoding"
     mkdir -p "$INSTALL_DIR/data/transcoding"
+    debug "Creating: $INSTALL_DIR/data/library"
+    mkdir -p "$INSTALL_DIR/data/library"
     debug "Creating: $INSTALL_DIR/data/plugins"
     mkdir -p "$INSTALL_DIR/data/plugins"
     debug "Creating: $INSTALL_DIR/data/nginx"

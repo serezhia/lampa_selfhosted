@@ -3,44 +3,38 @@ services:
     image: nginx:alpine
     container_name: lampa-gateway
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "8443:8443"
     volumes:
-      - ./data/nginx:/etc/nginx/conf.d
-      - ./data/certs/letsencrypt:/etc/letsencrypt
-      - ./data/certs/acme-challenge:/var/www/certbot
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    - ./data/nginx:/etc/nginx/conf.d
     depends_on:
-      - lampa-frontend
-      - lampa-server
-      - torrserver
-      - jacred
-
-  certbot:
-    image: certbot/certbot
-    container_name: lampa-certbot
-    volumes:
-      - ./data/certs/letsencrypt:/etc/letsencrypt
-      - ./data/certs/acme-challenge:/var/www/certbot
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-
+      lampa-server:
+        condition: service_healthy
+      lampa-frontend:
+        condition: service_started
+      torrserver:
+        condition: service_started
+      jacred:
+        condition: service_healthy
+    networks:
+    - proxy
+    - default
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.lampa-nginx.rule=Host(`l.serezhia.ru`)
+    - traefik.http.routers.lampa-nginx.entrypoints=websecure
+    - traefik.http.routers.lampa-nginx.tls.certresolver=myresolver
+    - traefik.http.services.lampa-nginx.loadbalancer.server.port=80
   lampa-frontend:
     image: lampa-frontend:local
     build:
       context: ./source/web
       dockerfile: Dockerfile
       args:
-        - DOMAIN=${DOMAIN}
+      - DOMAIN=${DOMAIN}
     container_name: lampa-frontend
     restart: unless-stopped
     volumes:
-      # Builtin plugins from source (git-tracked)
-      - ./source/web/custom_plugins:/plugins/builtin:ro
-      # Custom user plugins (override builtin by same filename)
-      - ./data/plugins:/plugins/custom:ro
-
+    - ./source/web/custom_plugins:/plugins/builtin:ro
+    - ./data/plugins:/plugins/custom:ro
   lampa-server:
     image: lampa-server:local
     build:
@@ -49,45 +43,54 @@ services:
     container_name: lampa-server
     restart: unless-stopped
     volumes:
-      - ./data/database:/app/data
-      - ./data/transcoding:/app/transcoding
+    - ./data/database:/app/data
+    - ./data/transcoding:/app/transcoding
+    - ./data/library:/app/library
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/api/config"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     environment:
-      - PORT=8080
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME:-@error_bot}
-      - TELEGRAM_ADMIN_PHONES=${TELEGRAM_ADMIN_PHONES}
-      - BASE_URL=${BASE_URL:-http://localhost}
-      - TRANSCODING_DIR=/app/transcoding
-      - JACRED_HOST=jacred
-      - JACRED_PORT=9117
-      - JACRED_API_KEY=${JACRED_API_KEY}
-
+    - PORT=8080
+    - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    - TELEGRAM_BOT_NAME=${TELEGRAM_BOT_NAME:-@error_bot}
+    - TELEGRAM_ADMIN_PHONES=${TELEGRAM_ADMIN_PHONES}
+    - BASE_URL=${BASE_URL:-http://localhost}
+    - TRANSCODING_DIR=/app/transcoding
+    - JACRED_HOST=jacred
+    - JACRED_PORT=9117
+    - JACRED_API_KEY=${JACRED_API_KEY}
   torrserver:
     image: ghcr.io/yourok/torrserver:latest
     container_name: lampa-torrserver
     restart: unless-stopped
     ports:
-      - "8090:8090"
+    - 8090:8090
     volumes:
-      - ./data/torrserver/config:/opt/ts/config
-      - ./data/torrserver/cache:/opt/ts/cache
+    - ./data/torrserver/config:/opt/ts/config
+    - ./data/torrserver/cache:/opt/ts/cache
     environment:
-      - TS_PORT=8090
-      - TS_DONTKILL=1
-      - TS_HTTPAUTH=false
-
+    - TS_PORT=8090
+    - TS_DONTKILL=1
+    - TS_HTTPAUTH=false
   jacred:
     image: ghcr.io/pavelpikta/jacred-fdb:latest
     container_name: lampa-jacred
     restart: unless-stopped
     environment:
-      - TZ=Europe/Moscow
-      - UMASK=0027
+    - TZ=Europe/Moscow
+    - UMASK=0027
     volumes:
-      - ./data/jacred/config:/app/config
-      - ./data/jacred/data:/app/Data
+    - ./data/jacred/config:/app/config
+    - ./data/jacred/data:/app/Data
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9117/health"]
+      test:
+      - CMD
+      - wget
+      - --quiet
+      - --spider
+      - http://127.0.0.1:9117/health
       interval: 30s
       timeout: 15s
       retries: 3
@@ -96,3 +99,7 @@ services:
       resources:
         limits:
           memory: 2048M
+networks:
+  proxy:
+    external: true
+  default: {}

@@ -1,123 +1,73 @@
 # Lampa Self-Hosted - Copilot Instructions
 
-## Architecture Overview
+You are an expert full-stack developer assisting with the **Lampa Self-Hosted** project. This project is a self-hosted media center based on [Lampa](https://github.com/yumata/lampa-source) with a custom Dart Frog backend, Telegram authentication, sync features, and torrent streaming.
 
-Self-hosted media center based on [Lampa](https://github.com/yumata/lampa-source) with Telegram auth, sync features, and torrent streaming.
+## 🧠 Agent Skills & Knowledge Base
+
+This project uses **Agent Skills** to provide detailed, context-specific instructions. You MUST rely on these skills when working on specific parts of the stack:
+
+1. **Backend & Bot (lampa-server-api)**: 
+   - Use when modifying source/server/.
+   - Covers Dart Frog routing, Drift database schema, and Televerse Telegram bot commands.
+   - *Action:* Refer to .github/skills/lampa-server-api/SKILL.md and its templates.
+
+2. **Frontend Plugins (lampa-web-plugin)**: 
+   - Use when modifying source/web/custom_plugins/.
+   - Covers ES5 syntax, IIFE patterns, and Lampa global APIs.
+   - *Action:* Refer to .github/skills/lampa-web-plugin/SKILL.md and its templates.
+
+3. **Full-Stack Features (`lampa-fullstack-feature`)**:
+   - Use when creating a complex feature that requires database changes, API endpoints, Telegram bot commands, and frontend UI.
+   - Provides the step-by-step architectural workflow.
+   - *Action:* Refer to `.github/skills/lampa-fullstack-feature/SKILL.md`.
+
+4. **DeepWiki (CRITICAL FOR FRONTEND)**:
+   - When working on frontend plugins, you **MUST** use the mcp_deepwiki tool to query the yumata/lampa-source repository.
+   - Use it to understand how Lampa core components (Lampa.Activity, Lampa.Storage, Lampa.Network, etc.) work before writing code.
+
+## 🏗️ Architecture Overview
 
 **Main components (Docker Compose orchestrated):**
-- `lampa-frontend` - Patched Lampa SPA (source/web/) served via nginx
-- `lampa-server` - Dart Frog backend (source/server/) with SQLite/Drift
-- `nginx` - Reverse proxy with optional Let's Encrypt
-- `jacred` - Jackett-compatible torrent indexer aggregator
-- `torrserver` - Torrent streaming
+- lampa-frontend - Patched Lampa SPA (source/web/) served via nginx.
+- lampa-server - Dart Frog backend (source/server/) with SQLite/Drift.
+- 
+ginx - Reverse proxy with optional Let's Encrypt.
+- jacred - Jackett-compatible torrent indexer aggregator.
+- 	orrserver - Torrent streaming.
 
 **Data flow:**
-```
-Browser → nginx → lampa-frontend (SPA)
-              ↓
-      lampa-server (API + WebSocket)
-              ↓
-    SQLite database (data/database/)
-```
+Browser → nginx → lampa-frontend (SPA) → lampa-server (API + WebSocket) → SQLite database
 
-## Backend (source/server/)
+## 🛠️ Build & Patching (Frontend)
 
-**Framework:** [Dart Frog](https://dartfrog.vgv.dev/) with file-based routing
+The frontend is not built from scratch. Instead, it clones the original Lampa repository and patches it during the Docker build:
+1. Clones yumata/lampa-source from GitHub.
+2. Applies patches defined in source/web/patches.json via pply-modifications.js.
+3. Runs gulp pack_github to output the final build.
 
-**Key patterns:**
-- Routes map to `routes/` directory structure (e.g., `routes/api/bookmarks/sync.dart` → `POST /api/bookmarks/sync`)
-- Middleware at `routes/api/_middleware.dart` handles auth via `token` header
-- Singleton services: `DataSource.instance`, `TelegramBotService.instance`, `SyncPlayerService.instance`
-- Database uses Drift ORM with code generation (`dart run build_runner build`)
+**To modify core Lampa behavior:** Add a patch to patches.json (search and replace).
+**To add features:** Create a custom plugin in source/web/custom_plugins/.
 
-**Auth flow:**
-1. User registers via Telegram bot → gets 6-digit code
-2. Frontend submits code to `/api/device/add`
-3. Server validates and returns token stored in `Lampa.Storage`
-4. Subsequent requests include `token` + `profile` headers
+## 💻 Development Commands
 
-**Adding a new API endpoint:**
-```dart
-// routes/api/example/action.dart
-import 'package:dart_frog/dart_frog.dart';
-import 'package:lampa_server/database/database.dart' as db;
-
-Future<Response> onRequest(RequestContext context) async {
-  final profile = context.read<db.Profile?>(); // Injected by middleware
-  // ... handler logic
-  return Response.json(body: {'success': true});
-}
-```
-
-## Frontend Plugins (source/web/custom_plugins/)
-
-**Plugin loading:** `modification.js` fetches `/plugins/manifest.json` and loads plugins sequentially.
-
-**Load order:** auth → default_settings → jackett_proxy → custom_notices → sync_player → transcoding → online
-
-**Plugin structure:**
-```javascript
-(function() {
-    'use strict';
-    // Use Lampa.* APIs: Storage, Activity, Template, Noty, etc.
-    // Consult DeepWiki for yumata/lampa-source docs before writing
-})();
-```
-
-**Override mechanism:** User plugins in `data/plugins/` override builtin plugins by filename. No rebuild needed—just restart container.
-
-## Build & Patching
-
-**Frontend build (source/web/Dockerfile):**
-1. Clones `yumata/lampa-source` from GitHub
-2. Applies patches from `patches.json` via `apply-modifications.js`
-3. Runs `gulp pack_github` → outputs to `build/github/lampa/`
-
-**patches.json format:**
-```json
-{
-  "config": { "SELF_HOSTED_DOMAIN": "your-domain.com" },
-  "patches": [
-    { "file": "src/core/socket.js", "search": "...", "replace": "..." }
-  ]
-}
-```
-
-## Development Commands
-
-```bash
-# Full stack
+`ash
+# Full stack startup
 docker compose up -d --build
 
-# Rebuild specific service
+# Rebuild specific service (e.g., after changing a plugin or backend code)
 docker compose up -d --build lampa-frontend
+docker compose up -d --build lampa-server
 
-# Regenerate Drift database code
+# Regenerate Drift database code (CRITICAL after DB schema changes)
 cd source/server && dart run build_runner build --delete-conflicting-outputs
 
-# Run server locally (requires Dart SDK)
-cd source/server && dart_frog dev
-
-# View logs
+# View backend logs
 docker compose logs -f lampa-server
-```
+`
 
-## Key Files Reference
+## 📝 General Conventions
 
-| Purpose | Location |
-|---------|----------|
-| Docker orchestration | [docker-compose.yml](../docker-compose.yml) |
-| Environment config | `.env` (from [.env.example](../.env.example)) |
-| Frontend patching | [source/web/patches.json](../source/web/patches.json) |
-| API auth middleware | [source/server/routes/api/_middleware.dart](../source/server/routes/api/_middleware.dart) |
-| Database schema | [source/server/lib/database/database.dart](../source/server/lib/database/database.dart) |
-| Telegram bot commands | [source/server/lib/telegram_bot.dart](../source/server/lib/telegram_bot.dart) |
-| Sync Player WebSocket | [source/server/lib/sync_player_service.dart](../source/server/lib/sync_player_service.dart) |
-
-## Conventions
-
-- **Backend:** Dart 3.0+, Drift for DB, Televerse for Telegram
-- **Frontend plugins:** ES5 syntax (no modules), IIFE pattern, access Lampa APIs globally
-- **API responses:** `{'success': bool, ...}` or `{'error': string}`
-- **Logging:** `print('[ServiceName] message')` with flush for Docker visibility
-- **Language:** Russian comments/UI, English code
+- **Language:** Write code variables and logic in **English**. Write UI text, Telegram bot responses, and user-facing comments in **Russian**.
+- **Backend:** Dart 3.0+, always return JSON {'success': true} or {'error': '...'}.
+- **Frontend:** Strict ES5 (no let/const/=>), use ar and unction(). No ES6 modules.
+- **Logging:** Use print('[Component] message') in Dart for Docker log visibility.

@@ -42,6 +42,9 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 # Create transcoding directory for HLS segments
 RUN mkdir -p /app/transcoding && chmod 777 /app/transcoding
 
+# Create library directory for downloaded files
+RUN mkdir -p /app/library && chmod 777 /app/library
+
 # Keep database.json for migration (will be moved to /app/data after first run)
 RUN echo "{}" > /app/data/database.json && chmod 666 /app/data/database.json
 

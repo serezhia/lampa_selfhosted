@@ -167,6 +167,65 @@ class InviteCodes extends Table {
   DateTimeColumn get expiresAt => dateTime().named('expires_at').nullable()();
 }
 
+/// Таблица локальной библиотеки (загрузки)
+class LibraryItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get userId => text().named('user_id').references(Users, #id)();
+  IntColumn get tmdbId => integer().named('tmdb_id')();
+  TextColumn get type => text()(); // 'movie' or 'tv'
+  IntColumn get season => integer().nullable()();
+  IntColumn get episode => integer().nullable()();
+  TextColumn get title => text()();
+  TextColumn get poster => text().nullable()();
+  TextColumn get magnetUri => text().named('magnet_uri')();
+  TextColumn get status =>
+      text()(); // 'pending', 'downloading', 'transcoding', 'ready', 'error'
+  RealColumn get progress => real().withDefault(const Constant(0))();
+  TextColumn get errorMessage => text().named('error_message').nullable()();
+  IntColumn get fileIndex => integer().named('file_index').nullable()();
+  IntColumn get audioIndex => integer().named('audio_index').nullable()();
+  IntColumn get subtitleIndex => integer().named('subtitle_index').nullable()();
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Таблица для синхронизации данных Lampa (Storage Sync)
+class StorageData extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  IntColumn get profileId =>
+      integer().named('profile_id').references(Profiles, #id)();
+  TextColumn get key => text()(); // e.g., 'online_view', 'user_clarifys'
+  TextColumn get type => text()(); // e.g., 'array_string', 'object_object'
+  TextColumn get data => text()(); // JSON string
+  DateTimeColumn get updatedAt =>
+      dateTime().named('updated_at').withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {profileId, key},
+      ];
+}
+
+/// Таблица пользовательских плагинов
+class UserPlugins extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get userId => text().named('user_id').references(Users, #id)();
+  TextColumn get url => text()();
+  TextColumn get name => text().nullable()();
+  IntColumn get status =>
+      integer().withDefault(const Constant(1))(); // 1 = active, 0 = inactive
+  DateTimeColumn get createdAt =>
+      dateTime().named('created_at').withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+        {userId, url},
+      ];
+}
+
 @DriftDatabase(
   tables: [
     Users,
@@ -180,6 +239,9 @@ class InviteCodes extends Table {
     Settings,
     PendingRegistrations,
     InviteCodes,
+    LibraryItems,
+    StorageData,
+    UserPlugins,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -188,7 +250,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration {
@@ -207,6 +269,22 @@ class AppDatabase extends _$AppDatabase {
           await m.createTable(settings);
           await m.createTable(pendingRegistrations);
           await m.createTable(inviteCodes);
+        }
+        if (from < 4) {
+          await m.createTable(libraryItems);
+        }
+        if (from < 5) {
+          await m.addColumn(libraryItems, libraryItems.audioIndex);
+          await m.addColumn(libraryItems, libraryItems.subtitleIndex);
+        }
+        if (from < 6) {
+          await m.addColumn(libraryItems, libraryItems.fileIndex);
+        }
+        if (from < 7) {
+          await m.createTable(storageData);
+        }
+        if (from < 8) {
+          await m.createTable(userPlugins);
         }
       },
     );
@@ -366,7 +444,13 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   Future<void> upsertTimelineEntry(TimelineEntriesCompanion entry) async {
-    await into(timelineEntries).insertOnConflictUpdate(entry);
+    await into(timelineEntries).insert(
+      entry,
+      onConflict: DoUpdate(
+        (old) => entry,
+        target: [timelineEntries.profileId, timelineEntries.hash],
+      ),
+    );
   }
 
   // =============== Bookmark Changes ===============
@@ -608,10 +692,65 @@ class AppDatabase extends _$AppDatabase {
       // Удаляем устройства
       await (delete(devices)..where((d) => d.userId.equals(userId))).go();
 
+      // Удаляем загрузки
+      await (delete(libraryItems)..where((l) => l.userId.equals(userId))).go();
+
       // Удаляем пользователя
       await (delete(users)..where((u) => u.id.equals(userId))).go();
     });
   }
+
+  // =============== Library Items ===============
+
+  Future<List<LibraryItem>> getLibraryItemsByUserId(String userId) =>
+      (select(libraryItems)..where((l) => l.userId.equals(userId))).get();
+
+  Future<LibraryItem?> getLibraryItemById(String id) =>
+      (select(libraryItems)..where((l) => l.id.equals(id))).getSingleOrNull();
+
+  Future<LibraryItem> insertLibraryItem(LibraryItemsCompanion item) async {
+    await into(libraryItems).insert(item);
+    return (await getLibraryItemById(item.id.value))!;
+  }
+
+  Future<void> updateLibraryItem(LibraryItem item) =>
+      update(libraryItems).replace(item);
+
+  Future<void> deleteLibraryItem(String id) =>
+      (delete(libraryItems)..where((l) => l.id.equals(id))).go();
+
+  // =============== Storage Data ===============
+
+  Future<StorageDataData?> getStorageData(int profileId, String key) =>
+      (select(storageData)
+            ..where((s) => s.profileId.equals(profileId) & s.key.equals(key)))
+          .getSingleOrNull();
+
+  Future<void> upsertStorageData(StorageDataCompanion data) async {
+    await into(storageData).insert(
+      data,
+      onConflict: DoUpdate(
+        (old) => data,
+        target: [storageData.profileId, storageData.key],
+      ),
+    );
+  }
+
+  // =============== User Plugins ===============
+
+  Future<List<UserPlugin>> getUserPlugins(String userId) =>
+      (select(userPlugins)..where((p) => p.userId.equals(userId))).get();
+
+  Future<UserPlugin?> getUserPluginById(int id) =>
+      (select(userPlugins)..where((p) => p.id.equals(id))).getSingleOrNull();
+
+  Future<UserPlugin> insertUserPlugin(UserPluginsCompanion plugin) async {
+    final id = await into(userPlugins).insert(plugin);
+    return (await getUserPluginById(id))!;
+  }
+
+  Future<void> deleteUserPlugin(int id) =>
+      (delete(userPlugins)..where((p) => p.id.equals(id))).go();
 }
 
 LazyDatabase _openConnection() {

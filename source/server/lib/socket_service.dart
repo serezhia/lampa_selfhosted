@@ -67,6 +67,9 @@ class SocketService {
         case 'bookmarks':
           _handleBookmarks(channel, json);
 
+        case 'storage':
+          await _handleStorage(channel, json);
+
         case 'open':
         case 'other':
           _handleDirectMessage(channel, json);
@@ -279,6 +282,99 @@ class SocketService {
         {'method': 'bookmarks', 'data': <Map<String, dynamic>>{}},
       );
     }
+  }
+
+  Future<void> _handleStorage(
+    WebSocketChannel channel,
+    Map<String, dynamic> json,
+  ) async {
+    final userId = _channelUsers[channel];
+    final profileId = _channelProfiles[channel];
+    if (userId == null || profileId == null) return;
+
+    final params = json['params'];
+    if (params == null || params is! Map<String, dynamic>) return;
+
+    final name = params['name']?.toString();
+    if (name == null) return;
+
+    final id = params['id']?.toString();
+    final value = params['value'];
+    final remove = params['remove'] == true;
+    final clean = params['clean'] == true;
+
+    // Получаем текущие данные из БД
+    final currentData =
+        await DataSource.instance.getStorageData(profileId, name);
+
+    // Определяем тип данных (массив или объект)
+    // Lampa использует array_string для online_view, search_history, torrents_view
+    // и object_object для user_clarifys, torrents_filter_data
+    // object_string для online_last_balanser
+    final isArray = name == 'online_view' ||
+        name == 'search_history' ||
+        name == 'torrents_view';
+    final type = isArray
+        ? 'array_string'
+        : (name == 'online_last_balanser' ? 'object_string' : 'object_object');
+
+    dynamic parsedData;
+    if (currentData != null) {
+      try {
+        parsedData = jsonDecode(currentData.data);
+      } catch (_) {}
+    }
+
+    if (isArray) {
+      parsedData ??= <dynamic>[];
+      if (parsedData is List) {
+        if (clean) {
+          parsedData.clear();
+        } else if (remove) {
+          parsedData.remove(value);
+        } else if (value != null) {
+          if (!parsedData.contains(value)) {
+            parsedData.add(value);
+          }
+        }
+      }
+    } else {
+      parsedData ??= <String, dynamic>{};
+      if (parsedData is Map) {
+        if (clean) {
+          parsedData.clear();
+        } else if (remove && id != null) {
+          parsedData.remove(id);
+        } else if (id != null && value != null) {
+          parsedData[id] = value;
+        }
+      }
+    }
+
+    // Сохраняем обновленные данные
+    await DataSource.instance.upsertStorageData(
+      profileId,
+      name,
+      type,
+      jsonEncode(parsedData),
+    );
+
+    // Рассылаем изменения другим клиентам
+    // Lampa ожидает данные в поле data
+    _broadcast(
+      channel,
+      userId,
+      {
+        'method': 'storage',
+        'data': {
+          'name': name,
+          'id': id,
+          'value': value,
+          'remove': remove,
+          'clean': clean,
+        },
+      },
+    );
   }
 
   void _broadcast(

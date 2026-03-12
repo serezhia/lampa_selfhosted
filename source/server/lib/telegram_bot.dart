@@ -110,6 +110,8 @@ class TelegramBotService {
         .row()
         .add('👥 Профили', 'list_profiles')
         .row()
+        .add('🧩 Мои плагины', 'list_plugins')
+        .row()
         .add('👤 Мой аккаунт', 'my_profile');
   }
 
@@ -121,6 +123,8 @@ class TelegramBotService {
         .add('📱 Мои устройства', 'list_devices')
         .row()
         .add('👥 Профили', 'list_profiles')
+        .row()
+        .add('🧩 Мои плагины', 'list_plugins')
         .row()
         .add('👤 Мой аккаунт', 'my_profile');
 
@@ -473,6 +477,8 @@ class TelegramBotService {
         .row()
         .add('📢 Уведомления', 'admin_notices')
         .row()
+        .add('🖥️ Информация о машине', 'admin_sysinfo')
+        .row()
         .add('« Главное меню', 'main_menu');
 
     const text = '🔧 *Панель администратора*\n\nВыберите раздел:';
@@ -488,6 +494,127 @@ class TelegramBotService {
     } else {
       await ctx.reply(
         text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  /// Показать информацию о машине
+  Future<void> _showSysInfo(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    if (!(await DataSource.instance.isAdmin(telegramUserId))) return;
+
+    var sysInfoText = '🖥️ *Информация о машине*\n\n';
+
+    try {
+      // RAM
+      final freeResult = await Process.run('free', ['-m']);
+      if (freeResult.exitCode == 0) {
+        final lines = freeResult.stdout.toString().split('\n');
+        if (lines.length > 1) {
+          final memLine = lines[1].split(RegExp(r'\s+'));
+          if (memLine.length >= 4) {
+            final total = int.tryParse(memLine[1]) ?? 0;
+            final used = int.tryParse(memLine[2]) ?? 0;
+            final free = int.tryParse(memLine[3]) ?? 0;
+
+            String formatMb(int mb) {
+              if (mb > 1024) {
+                return '${(mb / 1024).toStringAsFixed(2)} GB';
+              }
+              return '$mb MB';
+            }
+
+            sysInfoText +=
+                '💾 *RAM:*\n• Всего: ${formatMb(total)}\n• Занято: ${formatMb(used)}\n• Свободно: ${formatMb(free)}\n\n';
+          }
+        }
+      }
+
+      // Storage
+      final dfResult = await Process.run('df', ['-h', '/app/data']);
+      if (dfResult.exitCode == 0) {
+        final lines = dfResult.stdout.toString().split('\n');
+        if (lines.length > 1) {
+          final dfLine = lines[1].split(RegExp(r'\s+'));
+          if (dfLine.length >= 5) {
+            final size = dfLine[1];
+            final used = dfLine[2];
+            final avail = dfLine[3];
+            final usePercent = dfLine[4];
+            sysInfoText +=
+                '💽 *Storage (Host):*\n• Всего: $size\n• Занято: $used ($usePercent)\n• Свободно: $avail\n\n';
+          }
+        }
+      }
+
+      // CPU
+      final topResult = await Process.run('sh', ['-c', 'top -bn1 | grep Cpu']);
+      if (topResult.exitCode == 0) {
+        final cpuLine = topResult.stdout.toString().trim();
+        final match = RegExp(r'(\d+\.\d+)\s*id').firstMatch(cpuLine);
+        if (match != null) {
+          final idle = double.tryParse(match.group(1) ?? '100') ?? 100.0;
+          final load = (100.0 - idle).toStringAsFixed(1);
+          sysInfoText += '⚙️ *CPU:*\n• Нагрузка: $load%\n\n';
+        } else {
+          sysInfoText += '⚙️ *CPU:*\n• $cpuLine\n\n';
+        }
+      }
+
+      // Network
+      final netResult = await Process.run('cat', ['/proc/net/dev']);
+      if (netResult.exitCode == 0) {
+        final lines = netResult.stdout.toString().split('\n');
+        for (final line in lines) {
+          if (line.contains('eth0:')) {
+            final parts = line.split(':');
+            if (parts.length == 2) {
+              final stats = parts[1].trim().split(RegExp(r'\s+'));
+              if (stats.length >= 9) {
+                final rxBytes = int.tryParse(stats[0]) ?? 0;
+                final txBytes = int.tryParse(stats[8]) ?? 0;
+
+                String formatBytes(int bytes) {
+                  if (bytes > 1024 * 1024 * 1024) {
+                    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+                  } else {
+                    return '${(bytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+                  }
+                }
+
+                sysInfoText +=
+                    '🌐 *Network (eth0):*\n• Получено: ${formatBytes(rxBytes)}\n• Отправлено: ${formatBytes(txBytes)}\n';
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      sysInfoText += '❌ Ошибка получения данных: $e';
+    }
+
+    final keyboard = InlineKeyboard()
+        .add('🔄 Обновить', 'admin_sysinfo')
+        .row()
+        .add('« Назад', 'admin_menu');
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        sysInfoText,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        sysInfoText,
         parseMode: ParseMode.markdown,
         replyMarkup: keyboard,
       );
@@ -818,10 +945,21 @@ class TelegramBotService {
             await _setProfileIcon(ctx, profileId, icon, messageId!);
           }
         }
+      } else if (data == 'list_plugins') {
+        await _showPluginsList(ctx, messageId: messageId, edit: true);
+      } else if (data == 'add_plugin') {
+        await _startAddPlugin(ctx, messageId!);
+      } else if (data.startsWith('delete_plugin_')) {
+        final pluginId = int.tryParse(data.substring(14));
+        if (pluginId != null) {
+          await _deletePlugin(ctx, pluginId, messageId!);
+        }
       }
       // ============= Admin callbacks =============
       else if (data == 'admin_menu') {
         await _showAdminMenu(ctx, messageId: messageId, edit: true);
+      } else if (data == 'admin_sysinfo') {
+        await _showSysInfo(ctx, messageId: messageId, edit: true);
       } else if (data == 'admin_notices') {
         await _showNoticesList(ctx, messageId: messageId, edit: true);
       } else if (data == 'notice_create') {
@@ -1363,6 +1501,35 @@ class TelegramBotService {
           'Добавлено номеров: ${phones.length}',
           replyMarkup: keyboard,
         );
+        return;
+      } else if (step == 'add_plugin') {
+        final url = inputText.trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          await ctx.reply('❌ URL должен начинаться с http:// или https://');
+          return;
+        }
+
+        try {
+          final user =
+              await DataSource.instance.findUserByTelegramId(telegramUserId);
+          if (user != null) {
+            await DataSource.instance.addUserPlugin(user.id, url);
+            DataSource.instance.clearPendingNoticeCreation(telegramUserId);
+
+            final keyboard =
+                InlineKeyboard().add('« К списку плагинов', 'list_plugins');
+            await ctx.reply(
+              '✅ *Плагин добавлен!*\n\n'
+              'URL: `$url`\n\n'
+              'Перезапустите Lampa, чтобы изменения вступили в силу.',
+              parseMode: ParseMode.markdown,
+              replyMarkup: keyboard,
+            );
+          }
+        } catch (e) {
+          await ctx.reply(
+              '❌ Ошибка при добавлении плагина. Возможно, он уже существует.');
+        }
         return;
       } else if (step != null && step.startsWith('edit_')) {
         // Редактирование существующего уведомления
@@ -2867,5 +3034,107 @@ class TelegramBotService {
       parseMode: ParseMode.markdown,
       replyMarkup: keyboard,
     );
+  }
+
+  // ============= Управление плагинами =============
+
+  Future<void> _showPluginsList(
+    Context ctx, {
+    int? messageId,
+    bool edit = false,
+  }) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final user = await DataSource.instance.findUserByTelegramId(telegramUserId);
+
+    if (user == null) return;
+
+    final plugins = await DataSource.instance.getUserPlugins(user.id);
+
+    var keyboard =
+        InlineKeyboard().add('➕ Добавить плагин', 'add_plugin').row();
+
+    if (plugins.isEmpty) {
+      keyboard = keyboard.add('« Главное меню', 'main_menu');
+
+      const text = '🧩 *Ваши плагины*\n\nУ вас пока нет добавленных плагинов.';
+
+      if (edit && messageId != null) {
+        await ctx.api.editMessageText(
+          ChatID(ctx.chat!.id),
+          messageId,
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      } else {
+        await ctx.reply(
+          text,
+          parseMode: ParseMode.markdown,
+          replyMarkup: keyboard,
+        );
+      }
+      return;
+    }
+
+    for (final plugin in plugins) {
+      final name = plugin.name ?? plugin.url.split('/').last;
+      final shortName = name.length > 25 ? '${name.substring(0, 22)}...' : name;
+      keyboard =
+          keyboard.add('❌ $shortName', 'delete_plugin_${plugin.id}').row();
+    }
+
+    keyboard = keyboard.add('« Главное меню', 'main_menu');
+
+    final text = '🧩 *Ваши плагины* (${plugins.length})\n\n'
+        'Нажмите на плагин, чтобы удалить его:';
+
+    if (edit && messageId != null) {
+      await ctx.api.editMessageText(
+        ChatID(ctx.chat!.id),
+        messageId,
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    } else {
+      await ctx.reply(
+        text,
+        parseMode: ParseMode.markdown,
+        replyMarkup: keyboard,
+      );
+    }
+  }
+
+  Future<void> _startAddPlugin(Context ctx, int messageId) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+
+    DataSource.instance.setPendingNoticeCreation(telegramUserId, {
+      'step': 'add_plugin',
+    });
+
+    final keyboard = InlineKeyboard().add('❌ Отмена', 'list_plugins');
+
+    await ctx.api.editMessageText(
+      ChatID(ctx.chat!.id),
+      messageId,
+      '➕ *Добавление плагина*\n\n'
+      'Отправьте URL плагина (должен начинаться с http:// или https://):',
+      parseMode: ParseMode.markdown,
+      replyMarkup: keyboard,
+    );
+  }
+
+  Future<void> _deletePlugin(Context ctx, int pluginId, int messageId) async {
+    final telegramUserId = ctx.from?.id.toString() ?? '';
+    final user = await DataSource.instance.findUserByTelegramId(telegramUserId);
+
+    if (user == null) return;
+
+    final plugin = await DataSource.instance.db.getUserPluginById(pluginId);
+    if (plugin != null && plugin.userId == user.id) {
+      await DataSource.instance.removeUserPlugin(pluginId);
+    }
+
+    await _showPluginsList(ctx, messageId: messageId, edit: true);
   }
 }
